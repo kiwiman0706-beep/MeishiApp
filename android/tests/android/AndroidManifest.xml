@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="jp.yaegaki.meishinote.tests"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/><application android:label="Meishi tests"/><instrumentation android:name="jp.yaegaki.meishinote.tests.Smoke" android:targetPackage="jp.yaegaki.meishinote"/></manifest>

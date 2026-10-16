@@ -1,0 +1,5 @@
+.DS_Store
+*.apk
+*.jks
+*.keystore
+local.properties
