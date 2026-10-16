@@ -8,10 +8,10 @@
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-feature android:name="android.hardware.camera" android:required="false"/>
 <uses-feature android:name="android.hardware.microphone" android:required="false"/>
-<application android:theme="@style/AppTheme" android:label="名刺ノート" android:icon="@drawable/ic_app" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false">
+<application android:theme="@style/AppTheme" android:label="Meishi-Claude" android:icon="@drawable/ic_app" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false">
 <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
 </activity>
-<provider android:name=".FilesProvider" android:authorities="jp.yaegaki.meishinote.files" android:exported="false" android:grantUriPermissions="true"/>
+<provider android:name=".FilesProvider" android:authorities="${applicationId}.files" android:exported="false" android:grantUriPermissions="true"/>
 <service android:name=".RecordingService" android:exported="false" android:foregroundServiceType="microphone"/>
 </application></manifest>

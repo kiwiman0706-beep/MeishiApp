@@ -36,7 +36,7 @@ const p = (id, name, company, status = "confirmed") => ({
     headless: true,
     executablePath:
       process.env.CHROME ||
-      "/tmp/meishi-tools/chrome-headless-shell-linux64/chrome-headless-shell",
+      "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({
@@ -102,10 +102,14 @@ const p = (id, name, company, status = "confirmed") => ({
   ];
   await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
   await page.screenshot({ path: path.join(screenshotDir, "02-list.png") });
-  assert(await page.getByText("2 件の名刺").isVisible());
+  assert(await page.locator("#count").getByText("2 件").isVisible());
   await page.getByPlaceholder("氏名・会社・メモを検索").fill("資料");
   assert.equal(await page.locator(".person").count(), 1);
   await page.getByPlaceholder("氏名・会社・メモを検索").fill("");
+  // The shutter is one tap from anywhere and asks for the auto-recognising scan.
+  await page.getByRole("button", { name: "名刺を撮影" }).click();
+  let calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "quickScan" });
   await page
     .getByRole("button", { name: "カード表示と表表示を切り替え" })
     .click();
@@ -120,62 +124,74 @@ const p = (id, name, company, status = "confirmed") => ({
     path: path.join(screenshotDir, "03-detail.png"),
     fullPage: true,
   });
+  // Confirmed, unregistered person: the single primary action is contact registration.
+  await page.getByRole("button", { name: "Google連絡先に登録" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "contacts", id: "demo-1" });
+  await page.getByRole("button", { name: "その他の操作" }).click();
+  await page.screenshot({ path: path.join(screenshotDir, "04-detail-menu.png") });
+  await page.getByRole("button", { name: /スキャンで画像を追加/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "scan", id: "demo-1", mode: "all" });
   await page.getByRole("button", { name: "編集", exact: true }).first().click();
   await page.locator("input").first().fill("山田 次郎（テスト）");
-  await page.getByRole("button", { name: "確認済みで保存" }).click();
-  let calls = await page.evaluate(() => window.calls);
+  await page.getByRole("button", { name: "保存のみ" }).click();
+  calls = await page.evaluate(() => window.calls);
   let save = calls.findLast((c) => c.action === "save");
   assert.equal(save.person.name, "山田 次郎（テスト）");
   assert.equal(save.person.status, "confirmed");
-  await page.evaluate(() => {
-    onNative({ type: "saved", data: "demo-1" });
-    go("import");
-  });
-  await page.screenshot({
-    path: path.join(screenshotDir, "04-import.png"),
-    fullPage: true,
-  });
-  // Scan grouping is independent from file-import grouping and preserves target person.
-  await page.getByRole("button", { name: /スキャン撮影/ }).click();
-  assert.equal(await page.locator("#scanGrouping").inputValue(), "all");
-  await page.screenshot({ path: path.join(screenshotDir, "06-scan-options.png"), fullPage: true });
-  await page.locator("#startScan").click();
+  assert.equal(save.thenContact, false);
+  await page.evaluate(() => onNative({ type: "saved", data: "demo-1" }));
+  // A person with a pending Gemini result opens straight into the pre-filled review form.
+  await page.evaluate(() => { layout = "cards"; go("home"); });
+  await page.locator(".person", { hasText: "佐藤" }).click();
+  assert(await page.getByText("読み取り結果の確認").isVisible());
+  assert.equal(await page.locator("label", { hasText: "肩書き" }).locator("input").inputValue(), "医師");
+  await page.screenshot({ path: path.join(screenshotDir, "05-review.png"), fullPage: true });
+  await page.getByRole("button", { name: "保存して連絡先に登録" }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.deepEqual(calls.at(-1), { action: "scan", id: "", mode: "all" });
-  for (const mode of ["pair", "page"]) {
-    await page.getByRole("button", { name: /スキャン撮影/ }).click();
-    await page.locator("#scanGrouping").selectOption(mode);
-    await page.locator("#startScan").click();
-    calls = await page.evaluate(() => window.calls);
-    assert.deepEqual(calls.at(-1), { action: "scan", id: "", mode });
-  }
-  await page.evaluate(() => openPerson("demo-1"));
-  await page.getByRole("button", { name: "スキャンで追加" }).click();
-  assert.equal(await page.locator("#scanGrouping").count(), 0);
-  await page.locator("#startScan").click();
+  save = calls.findLast((c) => c.action === "save");
+  assert.equal(save.thenContact, true);
+  assert.equal(save.person.acceptSuggestion, true);
+  assert.equal(save.person.title, "医師");
+  await page.evaluate(() => onNative({ type: "saved", data: "demo-2" }));
+  // Review event from native lands on the review screen once the state arrives.
+  await page.evaluate((d) => { onNative({ type: "review", data: "demo-2" }); onNative({ type: "state", data: d }); }, demo);
+  assert.equal(await page.evaluate(() => route), "edit");
+  await page.evaluate(() => { draft = null; go("menu"); });
+  await page.screenshot({ path: path.join(screenshotDir, "06-menu.png"), fullPage: true });
+  // Picking the grouping starts the import directly.
+  await page.getByRole("button", { name: /画像・PDFから取り込む/ }).click();
+  await page.getByRole("button", { name: /2ページずつ = 1人/ }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.deepEqual(calls.at(-1), { action: "scan", id: "demo-1", mode: "all" });
-  await page.getByRole("button", { name: "スキャンで追加" }).click();
-  await page.locator("#normalCamera").click();
+  assert.deepEqual(calls.at(-1), { action: "pick", mode: "pair" });
+  await page.getByRole("button", { name: /ScanSnapフォルダから取り込む/ }).click();
+  assert(await page.getByText("1ページ = 1人").isVisible());
+  await page.getByRole("button", { name: /2ページずつ = 1人（前回）/ }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.deepEqual(calls.at(-1), { action: "camera", id: "demo-1" });
-  await page.evaluate(() => go("import"));
-  await page.locator("#grouping").selectOption("pair");
-  await page.getByRole("button", { name: /画像・PDFを選択/ }).click();
+  assert.deepEqual(calls.at(-1), { action: "folder", mode: "pair" });
+  // Manual entry goes straight to the form once native reports the new id.
+  await page.getByRole("button", { name: /手入力で追加/ }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.equal(calls.findLast((c) => c.action === "pick").mode, "pair");
-  await page.evaluate(() => go("settings"));
-  await page.screenshot({
-    path: path.join(screenshotDir, "05-settings.png"),
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "一覧をCSVで保存" }).click();
+  assert.deepEqual(calls.at(-1), { action: "new" });
+  await page.evaluate(() => onNative({ type: "open", data: "demo-1" }));
+  assert.equal(await page.evaluate(() => route), "edit");
+  await page.evaluate(() => { draft = null; go("menu"); });
+  await page.getByRole("button", { name: /一覧をCSVで書き出す/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.equal(calls.findLast((c) => c.action === "export").kind, "csv");
+  await page.locator("input.switch").uncheck();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "settings", autoRecognize: false });
+  await page.getByRole("button", { name: /Gemini APIキー・モデル/ }).click();
+  await page.screenshot({ path: path.join(screenshotDir, "07-gemini.png"), fullPage: true });
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.equal(calls.at(-1).model, "gemini-2.5-flash");
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const r of ["home", "import", "settings"]) {
+    for (const r of ["home", "menu", "gemini"]) {
       await page.evaluate((r) => go(r), r);
       assert(
         await page.evaluate(
@@ -184,21 +200,16 @@ const p = (id, name, company, status = "confirmed") => ({
         `${r} overflow at ${width}`,
       );
     }
-    await page.evaluate(() => { go("import"); scanSheet(); });
-    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `scan overflow at ${width}`);
+    await page.evaluate(() => { go("menu"); backupSheet(); });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `backup overflow at ${width}`);
+    await page.evaluate(() => { closeModal(); openPerson("demo-1"); detailMenu(); });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `detail menu overflow at ${width}`);
     await page.evaluate(() => { closeModal(); openPerson("demo-2"); });
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
-      `detail overflow at ${width}`,
-    );
-    await page.evaluate(() => beginEdit());
-    assert(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-      `edit overflow at ${width}`,
+      `review overflow at ${width}`,
     );
     await page.evaluate(() => {
       draft = null;
@@ -214,7 +225,7 @@ const p = (id, name, company, status = "confirmed") => ({
   assert(!(await page.evaluate(() => window.pwned)));
   assert.equal(errors.length, 0, errors.join("\n"));
   console.log(
-    "PASS: list/search/table/edit/import/export, scan grouping/target/fallback and 320–768px layout; HTML content escaping; no JS errors.",
+    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings and 320–768px layout; HTML content escaping; no JS errors.",
   );
   await browser.close();
 })().catch((e) => {

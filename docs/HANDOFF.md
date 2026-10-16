@@ -1,5 +1,15 @@
 # 開発引き継ぎ
 
+## 0.3.0（Meishi-Claude）での変更
+
+- applicationId を `jp.yaegaki.meishiclaude` に変更（Javaのpackage/namespaceは `jp.yaegaki.meishinote` のまま）。署名鍵は新規作成した `meishiclaude-release.jks`（alias `meishiclaude`）。**リポジトリには入れていません。** 以後の更新は同じ鍵で署名すること。
+- 撮影ボタンは `quickScan`（mode=all, auto=true）。`MainActivity.afterCapture` が1人分の取り込み直後にGeminiを呼び、`review` イベントでUIを確認画面へ送る。失敗時は画像を残して詳細画面を開く。
+- 確認画面＝編集画面。`suggestion` を下書きに重ねて表示し、保存時に `acceptSuggestion` で `Store.edit` が rawText/warnings を確定して suggestion を消す。旧「反映して編集」ステップは廃止。
+- `save` に `thenContact:true` を付けると保存後に連絡先登録へ進む。登録先アカウントは `prefs.contactAccount` に記憶し、端末に残っている場合は選択画面と確認ダイアログを省略（`registerContact`）。
+- 設定 `settings` は部分更新（model / autoRecognize / contactPhoto / clearAccount を個別に送れる）。
+- UIルートは home / detail / edit / menu / gemini。旧 import / settings 画面はメニューに統合。
+
+
 ## 依頼の目的
 
 Eightを拡張したような個人向けAndroid名刺管理。SNS機能は不要。名刺画像を確実に残し、Google連絡先・Google Driveと組み合わせ、面談メモや録音を人単位で保管したい。
@@ -22,7 +32,7 @@ ML Kit Document Scanner 16.0.0をGradle依存で使用。MainActivity.startScann
 
 ## 更新時の注意
 
-package `jp.yaegaki.meishinote` を維持し、versionCodeを増やす。署名鍵は別の非公開ZIP。公開ソースに鍵・APIキー・実ユーザーデータを入れない。初版にデモデータは同梱していない。UI検証に使う人物は架空。
+（0.2.0時点）package `jp.yaegaki.meishinote` を維持し、versionCodeを増やす。※0.3.0以降は `jp.yaegaki.meishiclaude`。署名鍵は別の非公開ZIP。公開ソースに鍵・APIキー・実ユーザーデータを入れない。初版にデモデータは同梱していない。UI検証に使う人物は架空。
 
 schema変更前にバックアップ互換性と移行を設計する。自動同期・Google既存連絡先更新・自動画像取得は現在の実装機能ではないため、案内とUI表記を混同しない。録音中はメモ・テキスト編集を許可し、画像取込やバックアップなどは停止を促す。
 

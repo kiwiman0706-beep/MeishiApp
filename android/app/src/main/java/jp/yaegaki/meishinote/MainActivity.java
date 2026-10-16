@@ -191,6 +191,9 @@ public class MainActivity extends Activity {
           .put("model", getSharedPreferences("prefs", 0).getString("model", "gemini-2.5-flash"))
           .put("format", getSharedPreferences("prefs", 0).getString("format", "legacy"))
           .put("folder", getSharedPreferences("prefs", 0).getString("folder", ""))
+          .put("autoRecognize", prefs().getBoolean("autoRecognize", true))
+          .put("contactAccount", prefs().getString("contactAccount", ""))
+          .put("contactPhoto", prefs().getString("contactPhoto", "card"))
           .put("recording", RecordingService.activeId)
           .put("recordingStart", RecordingService.startTime);
       event("state", state);
@@ -201,6 +204,39 @@ public class MainActivity extends Activity {
 
   void error(Exception e) {
     event("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+  }
+
+  SharedPreferences prefs() {
+    return getSharedPreferences("prefs", 0);
+  }
+
+  // A one-person capture started from the shutter button goes straight on to Gemini,
+  // so the user lands on the review screen instead of hunting for the next button.
+  void afterCapture(JSONObject imported, JSONObject q) throws Exception {
+    JSONArray ids = imported.getJSONArray("ids");
+    boolean auto =
+        q.optBoolean("auto")
+            && q.optString("id").isEmpty()
+            && ids.length() == 1
+            && prefs().getBoolean("autoRecognize", true);
+    if (!auto || !prefs().contains("key")) {
+      event("imported", imported);
+      if (auto) event("toast", "APIキーを設定すると、撮影後に自動で読み取ります");
+      return;
+    }
+    String id = ids.getString(0);
+    event("busy", "Geminiで名刺を読み取り中");
+    try {
+      JSONObject p = store.person(id);
+      JSONObject result = new Gemini(this).recognize(p);
+      p = store.person(id);
+      p.put("suggestion", result).put("status", "review");
+      store.put(p);
+      event("review", id);
+    } catch (Exception e) {
+      event("open", id);
+      event("report", "画像は保存しました。読み取りに失敗したため、詳細画面の「Geminiで読み取る」から再試行してください。\n\n" + e.getMessage());
+    }
   }
 
   void task(String title, Work work) {
@@ -314,6 +350,7 @@ public class MainActivity extends Activity {
         store.edit(id, q.getJSONObject("person"));
         refresh();
         event("saved", id);
+        if (q.optBoolean("thenContact")) handle("contacts", q);
         break;
       case "delete":
         if (id.equals(RecordingService.activeId)) throw new IOException("録音を停止してから削除してください");
@@ -428,6 +465,9 @@ public class MainActivity extends Activity {
       case "scan":
         startScanner(q);
         break;
+      case "quickScan":
+        startScanner(q.put("mode", "all").put("id", "").put("auto", true));
+        break;
       case "camera":
         {
           File f = new File(getCacheDir(), "camera-" + UUID.randomUUID() + ".jpg");
@@ -457,13 +497,21 @@ public class MainActivity extends Activity {
           if (q.optBoolean("clearKey")) VaultKey.save(this, "");
           else if (!q.optString("key").trim().isEmpty())
             VaultKey.save(this, q.getString("key").trim());
-          String model = q.optString("model", "gemini-2.5-flash").trim().replace("models/", "");
-          if (!model.matches("[A-Za-z0-9._-]+")) throw new IOException("モデル名を確認してください");
-          getSharedPreferences("prefs", 0)
-              .edit()
-              .putString("model", model)
-              .putString("format", q.optString("format", "legacy"))
-              .apply();
+          SharedPreferences.Editor e = prefs().edit();
+          if (q.has("model")) {
+            String model = q.optString("model").trim().replace("models/", "");
+            if (!model.matches("[A-Za-z0-9._-]+")) throw new IOException("モデル名を確認してください");
+            e.putString("model", model).putString("format", q.optString("format", "legacy"));
+          }
+          if (q.has("autoRecognize")) e.putBoolean("autoRecognize", q.getBoolean("autoRecognize"));
+          if (q.has("contactPhoto")) {
+            String photo = q.getString("contactPhoto");
+            if (!Arrays.asList("card", "portrait", "logo", "none").contains(photo))
+              throw new IOException("不正な写真の種類");
+            e.putString("contactPhoto", photo);
+          }
+          if (q.optBoolean("clearAccount")) e.remove("contactAccount");
+          e.apply();
           refresh();
           event("toast", "設定を保存しました");
           break;
@@ -480,7 +528,7 @@ public class MainActivity extends Activity {
               p = store.person(id);
               p.put("suggestion", result).put("status", "review");
               store.put(p);
-              event("recognized", id);
+              event("review", id);
             });
         break;
       case "recognizeAll":
@@ -774,8 +822,18 @@ public class MainActivity extends Activity {
       return;
     }
     String duplicate = Contacts.duplicate(this, p);
+    String saved = prefs().getString("contactAccount", "");
+    // The chooser grants visibility to the picked account; if it is gone, ask again.
+    boolean present = false;
+    for (android.accounts.Account acc : AccountManager.get(this).getAccountsByType("com.google"))
+      if (acc.name.equals(saved)) present = true;
+    String remembered = present ? saved : "";
     Runnable choose =
         () -> {
+          if (!remembered.isEmpty()) {
+            registerContact(q, remembered);
+            return;
+          }
           setPending(q);
           startActivityForResult(
               AccountManager.newChooseAccountIntent(
@@ -790,6 +848,16 @@ public class MainActivity extends Activity {
           .setPositiveButton("新しく追加", (d, w) -> choose.run())
           .show();
     else choose.run();
+  }
+
+  void registerContact(JSONObject q, String account) {
+    String photo = q.optString("photo", prefs().getString("contactPhoto", "card"));
+    task(
+        "連絡先を登録中",
+        () -> {
+          Contacts.add(this, store.person(q.getString("id")), account, photo);
+          event("toast", account + " の連絡先に登録しました");
+        });
   }
 
   void scanFolder(Uri uri, JSONObject q) {
@@ -890,7 +958,7 @@ public class MainActivity extends Activity {
         task("スキャン画像を保存中", () -> {
           JSONObject r = new Importer(this).run(uris, q.optString("mode", "all"),
               q.optString("id"), t -> event("busy", t), true);
-          event("imported", r);
+          afterCapture(r, q);
         });
       }
       if (request == PICK) {
@@ -926,7 +994,7 @@ public class MainActivity extends Activity {
                             "all",
                             q.optString("id"),
                             t -> event("busy", t));
-                event("imported", r);
+                afterCapture(r, q);
               } finally {
                 f.delete();
               }
@@ -981,32 +1049,8 @@ public class MainActivity extends Activity {
             type = data.getStringExtra(AccountManager.KEY_ACCOUNT_TYPE);
         if (account == null || !"com.google".equals(type))
           throw new IOException("Googleアカウントを選択してください");
-        JSONObject p = store.person(q.getString("id"));
-        new AlertDialog.Builder(this)
-            .setTitle("Google連絡先へ登録")
-            .setMessage(
-                "氏名: "
-                    + p.optString("name")
-                    + "\n会社: "
-                    + p.optString("company")
-                    + "\n保存先: "
-                    + account
-                    + "\n\n名刺ノートのメモ・録音は送信しません。端末の連絡先同期が有効ならGoogleへ同期されます。")
-            .setNegativeButton("キャンセル", null)
-            .setPositiveButton(
-                "登録",
-                (d, w) ->
-                    task(
-                        "連絡先を登録中",
-                        () -> {
-                          Contacts.add(
-                              this,
-                              store.person(q.getString("id")),
-                              account,
-                              q.optString("photo", "card"));
-                          event("report", "端末のGoogleアカウント領域に登録しました。Google側への反映は端末の連絡先同期に依存します。");
-                        }))
-            .show();
+        prefs().edit().putString("contactAccount", account).apply();
+        registerContact(q, account);
       }
     } catch (Exception e) {
       error(e);

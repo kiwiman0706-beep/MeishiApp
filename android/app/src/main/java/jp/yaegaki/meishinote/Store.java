@@ -100,6 +100,12 @@ public final class Store {
     JSONObject p = person(id);
     for (String k : FIELDS) if (input.has(k)) p.put(k, input.optString(k, ""));
     if (input.has("status")) p.put("status", input.optString("status"));
+    // Saving from the review screen settles a pending Gemini result into the record.
+    if (input.optBoolean("acceptSuggestion") && p.has("suggestion")) {
+      JSONObject s = p.getJSONObject("suggestion");
+      p.put("rawText", s.optString("rawText")).put("warnings", s.optString("warnings"));
+      p.remove("suggestion");
+    }
     put(p);
   }
 
