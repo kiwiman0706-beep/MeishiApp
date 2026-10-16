@@ -240,7 +240,10 @@ function home() {
         `<button class="chip ${filter === v ? "active" : ""} ${v === "review" ? "attn" : ""}" onclick="filter='${v}';render()">${l} ${n}</button>`,
     )
     .join("");
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">MEISHI CLAUDE</div><h1>名刺ノート</h1></div></div></header>${recordBanner()}${setup}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div><button class="iconbtn toggle ${layout === "table" ? "active" : ""}" onclick="layout=layout==='table'?'cards':'table';render()" aria-label="カード表示と表表示を切り替え">${icon(layout === "table" ? "card" : "table")}</button></div>${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
+  const drive = state.driveFolderName
+    ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
+    : "";
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">MEISHI CLAUDE</div><h1>名刺ノート</h1></div></div></header>${recordBanner()}${setup}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div><button class="iconbtn toggle ${layout === "table" ? "active" : ""}" onclick="layout=layout==='table'?'cards':'table';render()" aria-label="カード表示と表表示を切り替え">${icon(layout === "table" ? "card" : "table")}</button></div>${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
     ["newest", "追加日が新しい順"],
     ["updated", "更新日が新しい順"],
     ["name", "氏名順"],
@@ -558,6 +561,34 @@ function contactSettingsSheet() {
       .join("")}</select><label class="label">登録先のGoogleアカウント</label>${state.contactAccount ? `<div class="row"><input value="${esc(state.contactAccount)}" readonly><button class="outline noflex" onclick="call('settings',{clearAccount:true});closeModal()">変更</button></div><p class="caption">「変更」を押すと、次回の登録時にアカウントを選び直します。</p>` : `<p class="caption">初回の登録時に選んだアカウントを記憶します。</p>`}<p class="tip gap">メモ・録音は連絡先に送りません。登録後の自動更新はありません。</p>`,
   );
 }
+let driveStack = [];
+function driveBrowse() {
+  driveStack = [{ id: "root", name: "マイドライブ" }];
+  call("driveFolders", { parent: "root" });
+}
+function driveOpen(i) {
+  const f = driveFolders[i];
+  driveStack.push({ id: f.id, name: f.name });
+  call("driveFolders", { parent: f.id });
+}
+function driveUp() {
+  driveStack.pop();
+  call("driveFolders", { parent: driveStack.at(-1).id });
+}
+let driveFolders = [];
+function driveSheet(list) {
+  driveFolders = list;
+  const here = driveStack.at(-1) || { id: "root", name: "マイドライブ" };
+  const atRoot = driveStack.length <= 1;
+  modal(
+    `<h2>${icon("cloud")} フォルダを選ぶ</h2><p class="caption">ScanSnapの保存先フォルダを開いて「このフォルダを使う」を押してください。取り込みが済んだファイルは、その中の「登録済み」フォルダへ移動します。</p><div class="crumb">${driveStack.map((x) => esc(x.name)).join(" › ")}</div><div class="mlist">${atRoot ? "" : menuRow("back", "上のフォルダへ", "", "driveUp()")}${list.map((f, i) => menuRow("folder", esc(f.name), "", `driveOpen(${i})`)).join("") || '<p class="caption" style="padding:12px 14px">サブフォルダはありません</p>'}</div><label class="label">ファイルのまとめ方</label><select id="drivemode">${groupings.map(([v, l]) => `<option value="${v}" ${(state.driveMode || "file") === v ? "selected" : ""}>${l}</option>`).join("")}</select><p class="caption">ScanSnapで表裏を1つのPDFにしている場合は「1ファイル = 1人」です。</p><button class="primary full gap" ${atRoot ? "disabled" : ""} onclick="call('driveSelect',{folderId:'${esc(here.id)}',folderName:driveStack.at(-1).name,mode:$('drivemode').value});closeModal()">${icon("check")}「${esc(here.name)}」を使う</button>`,
+  );
+}
+function driveSettingsSheet() {
+  modal(
+    `<h2>${icon("cloud")} Driveフォルダの設定</h2><label class="label">取り込むフォルダ</label><p><b>${esc(state.driveFolderName)}</b></p><p class="caption">取り込みが済んだファイルは、このフォルダの中の「登録済み」へ移動します（無ければ作ります）。</p><label class="label">ファイルのまとめ方</label><select onchange="call('driveSelect',{folderId:state.driveFolderId,folderName:state.driveFolderName,mode:this.value})">${groupings.map(([v, l]) => `<option value="${v}" ${(state.driveMode || "file") === v ? "selected" : ""}>${l}</option>`).join("")}</select><div class="row gap"><button class="outline" onclick="closeModal();driveBrowse()">フォルダを変更</button><button class="danger noflex" onclick="if(confirm('Driveフォルダの設定を解除しますか？')){closeModal();call('driveClear')}">解除</button></div>`,
+  );
+}
 function menuPage() {
   const unread = state.people.filter(
     (p) => p.status === "new" && p.pages.length,
@@ -567,6 +598,12 @@ function menuPage() {
   return `<header class="top"><div class="brand"><div class="mark">${icon("menu")}</div><div><div class="brandline">MENU</div><h1>メニュー</h1></div></div></header>${recordBanner()}${section(
     "取り込み",
     [
+      ...(state.driveFolderName
+        ? [
+            menuRow("cloud", "Google Driveから取り込む", esc(state.driveFolderName) + " ・ 済んだファイルは「登録済み」へ", "call('driveImport')"),
+            menuRow("folder", "Driveフォルダの設定", groupings.find((g) => g[0] === (state.driveMode || "file"))[1], "driveSettingsSheet()"),
+          ]
+        : [menuRow("cloud", "Google DriveのScanSnapフォルダを設定", "PDFを取り込み、済んだら「登録済み」へ移動", "driveBrowse()")]),
       menuRow("image", "画像・PDFから取り込む", "写真やスキャンをまとめて", "importSheet('pick')"),
       menuRow("folder", "ScanSnapフォルダから取り込む", "フォルダ内を一括で", "importSheet('folder')"),
       state.folder ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
@@ -580,9 +617,9 @@ function menuPage() {
     menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()"),
   ])}${section("設定", [
     menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
-    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>撮影後に自動で読み取る</b><small>1人分を撮影したらすぐGeminiへ送信</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
+    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後すぐGeminiへ送信</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Meishi-Claude 0.3.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Meishi-Claude 0.4.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -686,6 +723,13 @@ window.onNative = ({ type, data }) => {
     else pendingOpen = data;
   }
   else if (type === "review") pendingEdit = data;
+  else if (type === "driveFolders") driveSheet(data);
+  else if (type === "batchDone") {
+    filter = "review";
+    if (route !== "edit") route = "home";
+    render();
+    report(data);
+  }
   else if (type === "home") go("home");
   else if (type === "saved") {
     draft = null;

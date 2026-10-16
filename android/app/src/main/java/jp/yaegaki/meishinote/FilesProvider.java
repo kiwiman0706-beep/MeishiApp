@@ -46,7 +46,10 @@ public class FilesProvider extends ContentProvider {
 
   public String getType(Uri u) {
     String n = u.getLastPathSegment();
-    if (n.endsWith(".jpg")) return "image/jpeg";
+    if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+    if (n.endsWith(".png")) return "image/png";
+    if (n.endsWith(".webp")) return "image/webp";
+    if (n.endsWith(".heic") || n.endsWith(".heif")) return "image/heif";
     if (n.endsWith(".m4a")) return "audio/mp4";
     if (n.endsWith(".zip")) return "application/zip";
     if (n.endsWith(".csv")) return "text/csv";

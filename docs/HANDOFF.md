@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.4.0での変更
+
+- `Drive.java`：Drive REST v3の最小クライアント（フォルダ一覧、カード一覧、ダウンロード、「登録済み」作成、移動）。トークンはPlay servicesの `AuthorizationClient` から毎回取得し、保存しない。スコープは `drive`（ScanSnapが作ったファイルを移動するため）。
+- `MainActivity.driveImport`：まとめ方が file/page なら1ファイルずつ取り込み、成功（または取り込み済みの重複）したファイルだけ移動。pair/all は全ファイルを一度に取り込み、1件でも取得失敗があれば中止して何も移動しない。
+- `afterImport`：全取り込み経路の共通後処理。自動読み取りがオンなら、1人は確認画面へ、複数人は `recognizeIds` で順に読み取り `batchDone` で「要確認」一覧へ。
+- prefs：driveFolderId / driveFolderName / driveMode。
+
 ## 0.3.0（Meishi-Claude）での変更
 
 - applicationId を `jp.yaegaki.meishiclaude` に変更（Javaのpackage/namespaceは `jp.yaegaki.meishinote` のまま）。署名鍵は新規作成した `meishiclaude-release.jks`（alias `meishiclaude`）。**リポジトリには入れていません。** 以後の更新は同じ鍵で署名すること。

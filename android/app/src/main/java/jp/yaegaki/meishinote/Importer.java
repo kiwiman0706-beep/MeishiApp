@@ -26,7 +26,11 @@ public final class Importer {
     store = Store.get(c);
   }
 
+  // Files staged in the cache (e.g. Drive downloads) keep their original names here.
+  public final Map<String, String> names = new HashMap<>();
+
   public String name(Uri u) {
+    if (names.containsKey(u.toString())) return names.get(u.toString());
     try (Cursor q =
         c.getContentResolver()
             .query(u, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {

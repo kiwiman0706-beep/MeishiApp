@@ -1273,3 +1273,16 @@ tbody tr:active {
 .row .noflex {
   white-space: nowrap;
 }
+.setup.drive {
+  background: var(--pale);
+  border-color: #cfe0d4;
+}
+.crumb {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 4px 8px;
+  overflow-wrap: anywhere;
+}
+button:disabled {
+  opacity: 0.45;
+}

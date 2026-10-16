@@ -188,6 +188,32 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: "保存", exact: true }).click();
   calls = await page.evaluate(() => window.calls);
   assert.equal(calls.at(-1).model, "gemini-2.5-flash");
+  // Drive: browse → choose folder with grouping; home gets a one-tap import button.
+  await page.evaluate(() => { closeModal(); go("menu"); });
+  await page.getByRole("button", { name: /Google DriveのScanSnapフォルダを設定/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "driveFolders", parent: "root" });
+  await page.evaluate(() => onNative({ type: "driveFolders", data: [{ id: "f1", name: "ScanSnap" }, { id: "f2", name: "写真" }] }));
+  assert(await page.getByRole("button", { name: /を使う/ }).isDisabled());
+  await page.locator("#modal").getByRole("button", { name: "ScanSnap", exact: true }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "driveFolders", parent: "f1" });
+  await page.evaluate(() => onNative({ type: "driveFolders", data: [{ id: "f3", name: "登録済み" }] }));
+  await page.screenshot({ path: path.join(screenshotDir, "08-drive-folder.png") });
+  await page.getByRole("button", { name: "「ScanSnap」を使う" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "driveSelect", folderId: "f1", folderName: "ScanSnap", mode: "file" });
+  demo.driveFolderName = "ScanSnap";
+  demo.driveFolderId = "f1";
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
+  await page.getByRole("button", { name: /Google Driveから取り込む/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "driveImport" });
+  await page.screenshot({ path: path.join(screenshotDir, "09-home-drive.png") });
+  // After a multi-person import + auto read, the list is filtered to 要確認.
+  await page.evaluate(() => onNative({ type: "batchDone", data: "2人・4ページを取り込みました。" }));
+  assert.equal(await page.evaluate(() => filter), "review");
+  await page.evaluate(() => { closeModal(); filter = "all"; render(); });
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });
@@ -225,7 +251,7 @@ const p = (id, name, company, status = "confirmed") => ({
   assert(!(await page.evaluate(() => window.pwned)));
   assert.equal(errors.length, 0, errors.join("\n"));
   console.log(
-    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings and 320–768px layout; HTML content escaping; no JS errors.",
+    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings, Drive folder/import and 320–768px layout; HTML content escaping; no JS errors.",
   );
   await browser.close();
 })().catch((e) => {

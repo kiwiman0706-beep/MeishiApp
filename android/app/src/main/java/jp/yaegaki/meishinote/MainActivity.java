@@ -18,6 +18,8 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.json.*;
 import com.google.mlkit.vision.documentscanner.*;
+import com.google.android.gms.auth.api.identity.*;
+import com.google.android.gms.common.api.Scope;
 
 public class MainActivity extends Activity {
   WebView web;
@@ -34,12 +36,22 @@ public class MainActivity extends Activity {
       SAVE = 14,
       RESTORE = 15,
       ACCOUNT = 16,
-      SCAN = 17;
+      SCAN = 17,
+      DRIVE_AUTH = 18;
+  // Full Drive scope: the ScanSnap folder and its files were not created by this app,
+  // and moving them into 登録済み needs write access to them.
+  static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+  DriveWork pendingDrive;
+  String pendingDriveTitle = "";
   AlertDialog scannerLoading;
   int scannerGeneration = 0;
 
   interface Work {
     void run() throws Exception;
+  }
+
+  interface DriveWork {
+    void run(Drive d) throws Exception;
   }
 
   BroadcastReceiver receiver =
@@ -194,6 +206,9 @@ public class MainActivity extends Activity {
           .put("autoRecognize", prefs().getBoolean("autoRecognize", true))
           .put("contactAccount", prefs().getString("contactAccount", ""))
           .put("contactPhoto", prefs().getString("contactPhoto", "card"))
+          .put("driveFolderName", prefs().getString("driveFolderName", ""))
+          .put("driveFolderId", prefs().getString("driveFolderId", ""))
+          .put("driveMode", prefs().getString("driveMode", "file"))
           .put("recording", RecordingService.activeId)
           .put("recordingStart", RecordingService.startTime);
       event("state", state);
@@ -210,32 +225,213 @@ public class MainActivity extends Activity {
     return getSharedPreferences("prefs", 0);
   }
 
-  // A one-person capture started from the shutter button goes straight on to Gemini,
-  // so the user lands on the review screen instead of hunting for the next button.
-  void afterCapture(JSONObject imported, JSONObject q) throws Exception {
+  // New people from any import go straight on to Gemini when auto-recognition is on,
+  // so the user lands on the review screen (one person) or the 要確認 list (several).
+  void afterImport(JSONObject imported, JSONObject q) throws Exception {
     JSONArray ids = imported.getJSONArray("ids");
     boolean auto =
-        q.optBoolean("auto")
-            && q.optString("id").isEmpty()
-            && ids.length() == 1
+        q.optString("id").isEmpty()
+            && ids.length() > 0
             && prefs().getBoolean("autoRecognize", true);
     if (!auto || !prefs().contains("key")) {
       event("imported", imported);
-      if (auto) event("toast", "APIキーを設定すると、撮影後に自動で読み取ります");
+      if (auto && q.optBoolean("auto")) event("toast", "APIキーを設定すると、取り込み後に自動で読み取ります");
       return;
     }
-    String id = ids.getString(0);
-    event("busy", "Geminiで名刺を読み取り中");
+    if (ids.length() == 1) {
+      String id = ids.getString(0);
+      event("busy", "Geminiで名刺を読み取り中");
+      try {
+        recognizeOne(id, new Gemini(this));
+        event("review", id);
+        if (imported.optInt("skipped") > 0 || imported.getJSONArray("errors").length() > 0)
+          event("report", importSummary(imported));
+      } catch (Exception e) {
+        event("open", id);
+        event("report", "画像は保存しました。読み取りに失敗したため、詳細画面の「Geminiで読み取る」から再試行してください。\n\n" + e.getMessage());
+      }
+      return;
+    }
+    List<String> list = new ArrayList<>();
+    for (int i = 0; i < ids.length(); i++) list.add(ids.getString(i));
+    event("batchDone", importSummary(imported) + "\n\n" + recognizeIds(list));
+  }
+
+  static String importSummary(JSONObject r) throws Exception {
+    StringBuilder b =
+        new StringBuilder(r.getJSONArray("ids").length() + "人・" + r.optInt("pages") + "ページを取り込みました。");
+    if (r.optInt("skipped") > 0) b.append("\n取り込み済みのためスキップ：").append(r.optInt("skipped")).append("ファイル");
+    if (r.optInt("moved") > 0) b.append("\n「" + Drive.DONE_FOLDER + "」へ移動：").append(r.optInt("moved")).append("ファイル");
+    JSONArray errors = r.getJSONArray("errors");
+    if (errors.length() > 0) {
+      b.append("\n\n取り込めなかったファイル：");
+      for (int i = 0; i < errors.length(); i++) b.append("\n").append(errors.getString(i));
+    }
+    return b.toString();
+  }
+
+  void recognizeOne(String id, Gemini g) throws Exception {
+    JSONObject result = g.recognize(store.person(id));
+    JSONObject p = store.person(id);
+    p.put("suggestion", result).put("status", "review");
+    store.put(p);
+  }
+
+  // Stops early on quota/auth errors so a bad key does not burn through every card.
+  String recognizeIds(List<String> ids) throws Exception {
+    Gemini g = new Gemini(this);
+    int done = 0, failed = 0;
+    StringBuilder errors = new StringBuilder();
+    for (String id : ids) {
+      String name = store.person(id).optString("name");
+      event("busy", "Geminiで読み取り中 " + (done + failed + 1) + " / " + ids.size() + "\n" + name);
+      try {
+        recognizeOne(id, g);
+        done++;
+      } catch (Exception e) {
+        failed++;
+        errors.append("\n").append(name.isEmpty() ? "未登録" : name).append(": ").append(e.getMessage());
+        String m = e.getMessage() == null ? "" : e.getMessage();
+        if (m.contains("429") || m.contains("403") || m.contains("401")) {
+          errors.append("\n利用上限または認証エラーのため中断しました。残りはメニューの「未認識をまとめて読み取る」から再開できます。");
+          break;
+        }
+      }
+    }
+    return "読み取り完了 " + done + "件 / 失敗 " + failed + "件\n「要確認」から1人ずつ確認して保存してください。" + errors;
+  }
+
+  // Authorization is re-requested before each Drive job: it is silent once granted and
+  // hands back a fresh short-lived token, so nothing needs to be stored.
+  void withDrive(String title, DriveWork work) {
+    if (busy || scannerLoading != null) {
+      event("toast", "処理が終わるまでお待ちください");
+      return;
+    }
+    AuthorizationRequest req =
+        AuthorizationRequest.builder()
+            .setRequestedScopes(Collections.singletonList(new Scope(DRIVE_SCOPE)))
+            .build();
+    Identity.getAuthorizationClient(this)
+        .authorize(req)
+        .addOnSuccessListener(
+            r -> {
+              if (r.hasResolution()) {
+                pendingDrive = work;
+                pendingDriveTitle = title;
+                try {
+                  startIntentSenderForResult(
+                      r.getPendingIntent().getIntentSender(), DRIVE_AUTH, null, 0, 0, 0);
+                } catch (Exception e) {
+                  pendingDrive = null;
+                  error(e);
+                }
+              } else runDrive(title, work, r.getAccessToken());
+            })
+        .addOnFailureListener(e -> event("error", driveSetupHelp(e)));
+  }
+
+  void runDrive(String title, DriveWork work, String token) {
+    if (token == null || token.isEmpty()) {
+      event("error", "Google Driveの許可を取得できませんでした。もう一度お試しください。");
+      return;
+    }
+    task(title, () -> work.run(new Drive(token)));
+  }
+
+  static String driveSetupHelp(Exception e) {
+    return "Google Driveに接続できませんでした。\n\n"
+        + "初回はGoogle Cloudで、このアプリ用のOAuthクライアント（Android）登録が必要です。"
+        + "手順はリポジトリの docs/DRIVE_SETUP.md を参照してください。\n\n詳細: "
+        + e.getMessage();
+  }
+
+  void driveImport(Drive d) throws Exception {
+    String folder = prefs().getString("driveFolderId", "");
+    if (folder.isEmpty()) throw new IOException("先にメニューからGoogle Driveのフォルダを設定してください");
+    String mode = prefs().getString("driveMode", "file");
+    event("busy", "Google Driveを確認中");
+    JSONArray files = d.cards(folder);
+    if (files.length() == 0) {
+      event("toast", "新しい名刺はありません");
+      return;
+    }
+    if (files.length() > 200) throw new IOException("1回の取り込みは200ファイルまでです。フォルダ内を減らしてください");
+    String done = d.subfolder(folder, Drive.DONE_FOLDER);
+    Importer importer = new Importer(this);
+    JSONArray ids = new JSONArray(), errors = new JSONArray();
+    int pages = 0, skipped = 0, moved = 0;
+    // Pairing across files needs the whole batch at once; every other mode goes file by file
+    // so each file is moved only after its own import succeeded.
+    boolean perFile = !mode.equals("pair") && !mode.equals("all");
+    List<File> staged = new ArrayList<>();
+    List<Uri> uris = new ArrayList<>();
+    List<JSONObject> metas = new ArrayList<>();
     try {
-      JSONObject p = store.person(id);
-      JSONObject result = new Gemini(this).recognize(p);
-      p = store.person(id);
-      p.put("suggestion", result).put("status", "review");
-      store.put(p);
-      event("review", id);
+      for (int i = 0; i < files.length(); i++) {
+        JSONObject f = files.getJSONObject(i);
+        String name = f.optString("name");
+        event("busy", "Google Driveから取得中 " + (i + 1) + " / " + files.length() + "\n" + name);
+        String ext = name.toLowerCase(Locale.ROOT).replaceAll("^.*(\\.[a-z0-9]{1,5})$", "$1");
+        if (!ext.matches("\\.[a-z0-9]{1,5}"))
+          ext = f.optString("mimeType").equals("application/pdf") ? ".pdf" : ".jpg";
+        File local = new File(getCacheDir(), "drive-" + UUID.randomUUID() + ext);
+        staged.add(local);
+        try {
+          d.download(f.getString("id"), local);
+        } catch (Exception e) {
+          errors.put(name + ": " + e.getMessage());
+          continue;
+        }
+        Uri u = FilesProvider.uri(this, local);
+        importer.names.put(u.toString(), name);
+        if (!perFile) {
+          uris.add(u);
+          metas.add(f);
+          continue;
+        }
+        JSONObject r = importer.run(Collections.singletonList(u), "file", "", t -> {}, true);
+        JSONArray e = r.getJSONArray("errors");
+        for (int k = 0; k < e.length(); k++) errors.put(e.get(k));
+        for (int k = 0; k < r.getJSONArray("ids").length(); k++) ids.put(r.getJSONArray("ids").get(k));
+        pages += r.optInt("pages");
+        skipped += r.optInt("skipped");
+        if (e.length() == 0) moved += moveDone(d, f, folder, done, errors);
+      }
+      if (!perFile && errors.length() > 0)
+        throw new IOException(
+            "組み合わせがずれないよう、この回の取り込みを中止しました（Driveのファイルは移動していません）。\n" + errors.toString());
+      if (!perFile && !uris.isEmpty()) {
+        event("busy", "名刺を保存中");
+        JSONObject r = importer.run(uris, mode, "", t -> event("busy", t), true);
+        ids = r.getJSONArray("ids");
+        pages = r.optInt("pages");
+        skipped = r.optInt("skipped");
+        JSONArray e = r.getJSONArray("errors");
+        for (int k = 0; k < e.length(); k++) errors.put(e.get(k));
+        // Importer aborts the whole pair batch on any bad file, so reaching here means all saved.
+        for (JSONObject f : metas) moved += moveDone(d, f, folder, done, errors);
+      }
+    } finally {
+      for (File f : staged) f.delete();
+    }
+    afterImport(
+        new JSONObject()
+            .put("ids", ids)
+            .put("pages", pages)
+            .put("skipped", skipped)
+            .put("moved", moved)
+            .put("errors", errors),
+        new JSONObject());
+  }
+
+  int moveDone(Drive d, JSONObject f, String from, String to, JSONArray errors) {
+    try {
+      d.move(f.getString("id"), from, to);
+      return 1;
     } catch (Exception e) {
-      event("open", id);
-      event("report", "画像は保存しました。読み取りに失敗したため、詳細画面の「Geminiで読み取る」から再試行してください。\n\n" + e.getMessage());
+      errors.put(f.optString("name") + "：取り込みましたが「" + Drive.DONE_FOLDER + "」へ移動できませんでした（" + e.getMessage() + "）");
+      return 0;
     }
   }
 
@@ -334,7 +530,8 @@ public class MainActivity extends Activity {
                 "merge",
                 "restore",
                 "export",
-                "contacts")
+                "contacts",
+                "driveImport")
             .contains(action)) throw new IOException("この操作の前に録音を停止してください。メモの追加・編集は録音中もできます。");
     String id = q.optString("id");
     switch (action) {
@@ -465,6 +662,34 @@ public class MainActivity extends Activity {
       case "scan":
         startScanner(q);
         break;
+      case "driveFolders":
+        {
+          String parent = q.optString("parent", "root");
+          withDrive("Google Driveのフォルダを取得中", d -> event("driveFolders", d.folders(parent)));
+          break;
+        }
+      case "driveSelect":
+        {
+          String folderId = q.getString("folderId");
+          String mode = q.optString("mode", "file");
+          if (!Arrays.asList("file", "pair", "page", "all").contains(mode)) throw new IOException("不正なまとめ方");
+          prefs()
+              .edit()
+              .putString("driveFolderId", folderId)
+              .putString("driveFolderName", q.optString("folderName"))
+              .putString("driveMode", mode)
+              .apply();
+          refresh();
+          event("toast", "Google Driveのフォルダを設定しました");
+          break;
+        }
+      case "driveClear":
+        prefs().edit().remove("driveFolderId").remove("driveFolderName").apply();
+        refresh();
+        break;
+      case "driveImport":
+        withDrive("Google Driveから取り込み中", this::driveImport);
+        break;
       case "quickScan":
         startScanner(q.put("mode", "all").put("id", "").put("auto", true));
         break;
@@ -536,39 +761,13 @@ public class MainActivity extends Activity {
             "未認識の名刺を読み取り中",
             () -> {
               JSONArray a = store.snapshot().getJSONArray("people");
-              int done = 0, failed = 0;
-              JSONArray errors = new JSONArray();
-              Gemini g = new Gemini(this);
+              List<String> ids = new ArrayList<>();
               for (int i = 0; i < a.length(); i++) {
                 JSONObject p = a.getJSONObject(i);
-                if (!p.optString("status").equals("new") || p.getJSONArray("pages").length() == 0)
-                  continue;
-                event("busy", "Gemini認識 " + (done + failed + 1) + "件目\n" + p.optString("name"));
-                try {
-                  JSONObject result = g.recognize(p);
-                  p.put("suggestion", result).put("status", "review");
-                  store.put(p);
-                  done++;
-                } catch (Exception e) {
-                  failed++;
-                  errors.put(
-                      (p.optString("name").isEmpty() ? "未登録" : p.optString("name"))
-                          + ": "
-                          + e.getMessage());
-                  if (e.getMessage() != null
-                      && (e.getMessage().contains("429")
-                          || e.getMessage().contains("403")
-                          || e.getMessage().contains("401"))) break;
-                }
+                if (p.optString("status").equals("new") && p.getJSONArray("pages").length() > 0)
+                  ids.add(p.getString("id"));
               }
-              event(
-                  "report",
-                  "認識完了 "
-                      + done
-                      + "件 / 失敗 "
-                      + failed
-                      + "件\n結果は各名刺で確認して反映してください。\n"
-                      + errors.toString());
+              event("batchDone", recognizeIds(ids));
             });
         break;
       case "applyRecognition":
@@ -870,7 +1069,7 @@ public class MainActivity extends Activity {
           JSONObject r =
               importer.run(
                   files, q.optString("mode", "file"), q.optString("id"), t -> event("busy", t));
-          event("imported", r);
+          afterImport(r, q);
         });
   }
 
@@ -941,6 +1140,21 @@ public class MainActivity extends Activity {
   @Override
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
+    if (request == DRIVE_AUTH) {
+      DriveWork work = pendingDrive;
+      pendingDrive = null;
+      if (result != RESULT_OK || work == null) {
+        if (work == null && result == RESULT_OK) event("toast", "許可しました。もう一度操作してください");
+        return;
+      }
+      try {
+        AuthorizationResult r = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data);
+        runDrive(pendingDriveTitle, work, r.getAccessToken());
+      } catch (Exception e) {
+        event("error", driveSetupHelp(e));
+      }
+      return;
+    }
     JSONObject q = pending;
     setPending(new JSONObject());
     if (result != RESULT_OK) {
@@ -958,7 +1172,7 @@ public class MainActivity extends Activity {
         task("スキャン画像を保存中", () -> {
           JSONObject r = new Importer(this).run(uris, q.optString("mode", "all"),
               q.optString("id"), t -> event("busy", t), true);
-          afterCapture(r, q);
+          afterImport(r, q);
         });
       }
       if (request == PICK) {
@@ -977,7 +1191,7 @@ public class MainActivity extends Activity {
                           q.optString("mode", "file"),
                           q.optString("id"),
                           t -> event("busy", t));
-              event("imported", r);
+              afterImport(r, q);
             });
       }
       if (request == CAMERA) {
@@ -994,7 +1208,7 @@ public class MainActivity extends Activity {
                             "all",
                             q.optString("id"),
                             t -> event("busy", t));
-                afterCapture(r, q);
+                afterImport(r, q);
               } finally {
                 f.delete();
               }
