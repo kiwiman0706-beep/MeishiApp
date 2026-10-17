@@ -6,7 +6,10 @@ const to = path.resolve(__dirname, "../ui");
 fs.rmSync(to, { recursive: true, force: true });
 fs.cpSync(from, to, { recursive: true });
 
-const java = fs.readFileSync(path.resolve(__dirname, "../../android/app/src/main/java/jp/yaegaki/meishinote/Gemini.java"), "utf8");
+// Windows checkouts may have CRLF line endings.
+const java = fs
+  .readFileSync(path.resolve(__dirname, "../../android/app/src/main/java/jp/yaegaki/meishinote/Gemini.java"), "utf8")
+  .replace(/\r\n/g, "\n");
 const literal = (name) => {
   const m = new RegExp(`static final String ${name}\\s*=([\\s\\S]*?);\\n`).exec(java);
   if (!m) throw new Error("missing " + name);
