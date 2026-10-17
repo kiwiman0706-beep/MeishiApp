@@ -1,7 +1,7 @@
 # リリースの手順
 
 `android/app/build.gradle` の `versionName`（と `versionCode`）、`desktop/package.json` の `version` を同じ版に揃え、
-`docs/releases/v<版>.md`（リリースノート）を書いてコミットし、タグを付けて送ります。
+`docs/releases/v<版>.md`（リリースノート）を書いてコミットし、GitHubの Actions →「Release」→「Run workflow」を押します（タグ `v<版>` はワークフローが作ります）。手元からタグを送っても同じです。
 
 ```sh
 git tag v0.14.0

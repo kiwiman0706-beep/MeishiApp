@@ -1,4 +1,5 @@
-# Push a tag like v0.14.0 → tests, then the Android APK, the Windows installer and the Mac
+# Push a tag like v0.14.0, or run it by hand (Actions → Release → Run workflow: the tag is made
+# from the version in the files) → tests, then the Android APK, the Windows installer and the Mac
 # builds, published together as one GitHub Release (the apps check it for updates).
 # The APK is signed only when the repository secrets ANDROID_KEYSTORE_B64 and
 # ANDROID_KEYSTORE_PASSWORD are set (see docs/RELEASING.md).
@@ -7,12 +8,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -20,18 +22,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - id: v
         name: Tag, Android and desktop versions agree
         run: |
-          tag="${GITHUB_REF_NAME#v}"
           android="$(sed -n "s/.*versionName '\(.*\)'.*/\1/p" android/app/build.gradle)"
           desktop="$(node -p 'require("./desktop/package.json").version')"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tag="${GITHUB_REF_NAME#v}"; else tag="$android"; fi
           echo "tag=$tag android=$android desktop=$desktop"
           test "$tag" = "$android" && test "$tag" = "$desktop"
           test -f "docs/releases/v$tag.md"
           echo "version=$tag" >> "$GITHUB_OUTPUT"
+          echo "tag=v$tag" >> "$GITHUB_OUTPUT"
 
   test:
     needs: check
@@ -137,14 +141,16 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
         run: |
           ls -la out
           # Re-running (e.g. after adding the signing secrets) adds or replaces the files.
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" out/* --clobber
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" out/* \
+            # Run by hand, the tag is created on this commit.
+            gh release create "$TAG" out/* \
+              --target "$GITHUB_SHA" \
               --title "Theta Meishi Hatch ${{ needs.check.outputs.version }}" \
-              --notes-file "docs/releases/$GITHUB_REF_NAME.md" \
-              --verify-tag
+              --notes-file "docs/releases/$TAG.md"
           fi
