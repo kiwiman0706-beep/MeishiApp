@@ -244,6 +244,14 @@ public class MainActivity extends Activity {
   // registration), so the user is free to scan the next card straight away.
   void afterImport(JSONObject imported, JSONObject q) throws Exception {
     JSONArray ids = imported.getJSONArray("ids");
+    if (!q.optString("attachTo").isEmpty() && q.optString("id").isEmpty()) {
+      // A document for a known person: no reading, just file it.
+      for (int i = 0; i < ids.length(); i++)
+        Nenga.attach(store, ids.getString(i), q.getString("attachTo"), q.optString("dir"), q.optString("title"));
+      event("open", q.getString("attachTo"));
+      event("toast", "書類を添付しました");
+      return;
+    }
     if (q.optBoolean("nenga") && q.optString("id").isEmpty()) {
       List<String> list = new ArrayList<>();
       for (int i = 0; i < ids.length(); i++) {
@@ -795,6 +803,14 @@ public class MainActivity extends Activity {
           refresh();
           break;
         }
+      case "openMedia":
+        {
+          String name = q.getString("file");
+          File f = store.mediaFile(name);
+          if (!f.isFile()) throw new IOException("ファイルが見つかりません");
+          openFile(f, name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".m4a") ? "audio/mp4" : "image/jpeg", false);
+          break;
+        }
       case "greetingEdit":
         {
           JSONObject p = store.person(id);
@@ -806,6 +822,7 @@ public class MainActivity extends Activity {
             else {
               if (q.optString("date").matches("\\d{4}-\\d{2}-\\d{2}")) g.put("date", q.getString("date"));
               if (q.has("year")) g.put("year", q.getInt("year"));
+              if (q.has("title")) g.put("title", q.optString("title"));
             }
             break;
           }

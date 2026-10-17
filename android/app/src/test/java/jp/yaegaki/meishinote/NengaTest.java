@@ -86,4 +86,18 @@ public class NengaTest {
     assertTrue(Store.referenced(new JSONObject().put("people", new JSONArray().put(person))).contains("n.jpg"));
     assertTrue(Sync.media(person).contains("n.jpg"));
   }
+
+  @Test
+  public void otherMailUsesArrivalYearAndStaysOutOfNewYearCounts() throws Exception {
+    Calendar c = Calendar.getInstance();
+    c.set(2026, Calendar.DECEMBER, 24);
+    JSONObject temp = new JSONObject().put("created", c.getTimeInMillis()).put("pages", new JSONArray());
+    JSONObject xmas = Nenga.greeting(temp, new JSONObject().put("kind", "xmas"));
+    assertEquals(2026, xmas.getInt("year")); // a December New Year card would be 2027
+    assertEquals(2027, Nenga.greeting(temp, new JSONObject().put("kind", "nenga")).getInt("year"));
+    JSONObject p = new JSONObject().put("greetings", new JSONArray().put(xmas));
+    assertFalse(Nenga.has(p, 2026, "received"));
+    p.getJSONArray("greetings").put(new JSONObject().put("year", 2026).put("dir", "received")); // legacy entry, no kind
+    assertTrue(Nenga.has(p, 2026, "received"));
+  }
 }

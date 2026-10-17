@@ -1543,3 +1543,13 @@ button:disabled {
 .ntog small {
   font-size: 10px;
 }
+.mailrow {
+  text-align: left;
+  width: 100%;
+}
+.mailrow > svg {
+  width: 16px;
+  height: 16px;
+  opacity: 0.45;
+  margin-right: 6px;
+}

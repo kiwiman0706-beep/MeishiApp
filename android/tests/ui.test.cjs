@@ -326,7 +326,7 @@ const p = (id, name, company, status = "confirmed") => ({
   assert(await page.getByText("店名").isVisible());
   assert(await page.getByText("定休日").isVisible());
   await page.evaluate(() => { draft = null; filter = "all"; go("menu"); });
-  await page.getByRole("button", { name: /^年賀状 届いた・送った/ }).click();
+  await page.getByRole("button", { name: /^年賀状・お便り/ }).click();
   assert.equal(await page.locator(".calhead select").inputValue(), String(y));
   await page.screenshot({ path: path.join(screenshotDir, "17-nenga.png"), fullPage: true });
   assert(await page.getByText("差出人を読み取り中").isVisible());
@@ -350,6 +350,19 @@ const p = (id, name, company, status = "confirmed") => ({
   assert.deepEqual(calls.at(-1), { action: "export", kind: "nenga", year: y });
   await page.evaluate(() => openPerson("demo-1"));
   assert(await page.getByText("差出人：山田 太郎・山田 花子").isVisible());
+  // Attaching a document to this person goes through import with attachTo.
+  await page.getByRole("button", { name: "その他の操作" }).click();
+  await page.getByRole("button", { name: /書類・手紙を添付/ }).click();
+  await page.locator("#atitle").fill("見積書");
+  await page.getByRole("button", { name: /画像・PDFを選んで添付/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "pick", id: "", mode: "all", attachTo: "demo-1", title: "見積書", dir: "received" });
+  // A Christmas card is mail, not part of the New Year count.
+  demo.people[0].greetings.push({ id: "g3", year: y, dir: "received", date: `${y}-12-24`, kind: "xmas", files: [] });
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("nenga"); }, demo);
+  assert(await page.getByText("最近のお便り・書類").isVisible());
+  assert(await page.locator(".mailrow", { hasText: "クリスマスカード" }).isVisible());
+  assert(await page.locator(".stats strong").first().textContent() === "1");
   demo.people = demo.people.filter((x) => !["shop-1", "inbox-1"].includes(x.id));
   delete demo.people[0].greetings;
   delete demo.people[1].greetings;

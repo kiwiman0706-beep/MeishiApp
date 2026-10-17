@@ -62,8 +62,17 @@ public final class Nenga {
     return new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date(when));
   }
 
+  // Kinds that make up the yearly New Year card exchange; the rest are general mail.
+  public static final List<String> NENGA_KINDS = Arrays.asList("nenga", "mochu", "kanchu");
+  static final List<String> KINDS = Arrays.asList("nenga", "mochu", "kanchu", "shochu", "xmas", "letter", "other", "doc");
+
   public static JSONObject greeting(JSONObject temp, JSONObject r) throws Exception {
-    int year = temp.optInt("nengaYear", season(temp.optLong("created")));
+    String kind = r.optString("kind");
+    if (!KINDS.contains(kind)) kind = "nenga";
+    // A New Year card belongs to its season; any other mail to the year it arrived.
+    Calendar cal = Calendar.getInstance();
+    cal.setTimeInMillis(temp.optLong("created", System.currentTimeMillis()));
+    int year = NENGA_KINDS.contains(kind) ? temp.optInt("nengaYear", season(temp.optLong("created"))) : cal.get(Calendar.YEAR);
     String y = r.optString("year");
     if (y.matches("\\d{4}")) {
       int v = Integer.parseInt(y);
@@ -73,8 +82,6 @@ public final class Nenga {
     JSONArray pages = temp.getJSONArray("pages");
     for (int i = 0; i < pages.length(); i++)
       files.put(new JSONObject().put("file", pages.getJSONObject(i).getString("file")).put("name", pages.getJSONObject(i).optString("name")));
-    String kind = r.optString("kind");
-    if (!Arrays.asList("nenga", "mochu", "kanchu", "shochu", "other").contains(kind)) kind = "nenga";
     return new JSONObject()
         .put("id", UUID.randomUUID().toString())
         .put("year", year)
@@ -86,12 +93,43 @@ public final class Nenga {
         .put("message", r.optString("message"));
   }
 
+  // Moves freshly imported pages (and any original PDF) onto a person as an attached document.
+  public static void attach(Store s, String tempId, String targetId, String dir, String title) throws Exception {
+    JSONObject temp = s.person(tempId), p = s.person(targetId);
+    JSONArray files = new JSONArray();
+    JSONArray pages = temp.getJSONArray("pages");
+    for (int i = 0; i < pages.length(); i++)
+      files.put(new JSONObject().put("file", pages.getJSONObject(i).getString("file")).put("name", pages.getJSONObject(i).optString("name")));
+    JSONArray sources = temp.optJSONArray("sources");
+    for (int i = 0; sources != null && i < sources.length(); i++)
+      if (sources.getJSONObject(i).optString("file").endsWith(".pdf"))
+        files.put(new JSONObject().put("file", sources.getJSONObject(i).getString("file")).put("name", sources.getJSONObject(i).optString("name")).put("original", true));
+    long now = System.currentTimeMillis();
+    Calendar cal = Calendar.getInstance();
+    JSONArray list = p.optJSONArray("greetings");
+    if (list == null) p.put("greetings", list = new JSONArray());
+    list.put(
+        new JSONObject()
+            .put("id", UUID.randomUUID().toString())
+            .put("year", cal.get(Calendar.YEAR))
+            .put("dir", dir.equals("sent") ? "sent" : "received")
+            .put("date", today(now))
+            .put("kind", "doc")
+            .put("title", title)
+            .put("files", files));
+    s.put(p); // first, so the files stay referenced when the temporary record goes
+    s.removeQuietly(tempId);
+  }
+
   static boolean has(JSONObject p, int year, String dir) {
     JSONArray a = p.optJSONArray("greetings");
     if (a != null)
       for (int i = 0; i < a.length(); i++) {
         JSONObject g = a.optJSONObject(i);
-        if (g != null && g.optInt("year") == year && g.optString("dir").equals(dir)) return true;
+        if (g != null
+            && g.optInt("year") == year
+            && g.optString("dir").equals(dir)
+            && NENGA_KINDS.contains(g.optString("kind", "nenga"))) return true;
       }
     return false;
   }
