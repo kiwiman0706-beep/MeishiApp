@@ -95,6 +95,12 @@ python tools/make_meishi_import.py eight.csv --images ./eight_images \
 python tools/make_meishi_import.py cards.csv --images ./images -o meishi-import.zip
 ```
 
+```bash
+# CSVなし・画像だけ（001_1.jpg＝表、001_2.jpg＝裏 のように番号で1人分をまとめる）
+python tools/make_meishi_import.py --images ./downloaded -o meishi-import.zip
+```
+
+- 画像だけの場合、ファイル名の末尾 `_1`/`_2`（`-1`/`-2`、`表`/`裏`、`front`/`back` も可）で表裏を判定し、残りの部分が同じファイルを1人にまとめます。末尾が無いファイルは1枚で1人です。氏名などは取り込み後にGeminiが読み取ります。
 - `{列名}` には、その行のその列の値が入ります。
 - 画像は `--images` フォルダの中をサブフォルダまで、ファイル名（大文字小文字は区別しない）で探します。
 - 見つからなかった画像は一覧で表示します。その人は画像なしで取り込まれます。

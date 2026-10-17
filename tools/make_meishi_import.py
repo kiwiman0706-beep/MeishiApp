@@ -11,6 +11,10 @@ python make_meishi_import.py eight.csv --images ./eight_images \
 
 # CSV that already has 表面画像 / 裏面画像 columns with file names
 python make_meishi_import.py cards.csv --images ./images -o meishi-import.zip
+
+# Images only (no CSV): 001_1.jpg + 001_2.jpg → one person (front, back). The app reads
+# the fields with Gemini after import.
+python make_meishi_import.py --images ./downloaded -o meishi-import.zip
 """
 import argparse
 import csv
@@ -59,14 +63,58 @@ def find(images, name, index):
     return index.get(os.path.basename(name).lower())
 
 
+# "001_1.jpg", "001-2.png", "山田_表.jpg", "abc_front.jpg" → (key, side). Side 1 = front.
+SIDE = re.compile(r"^(.*?)[\s_-]*(1|2|3|4|表|裏|front|back|omote|ura)$", re.IGNORECASE)
+SIDE_ORDER = {"1": 1, "表": 1, "front": 1, "omote": 1, "2": 2, "裏": 2, "back": 2, "ura": 2, "3": 3, "4": 4}
+
+
+def images_only(images, out):
+    """Pair files by name: same key = same person, ordered by the side suffix."""
+    groups = {}
+    for root, _, files in os.walk(images):
+        for f in sorted(files):
+            if os.path.splitext(f)[1].lower() not in IMAGE_EXT:
+                continue
+            stem = os.path.splitext(f)[0]
+            m = SIDE.match(stem)
+            key, side = (m.group(1), SIDE_ORDER[m.group(2).lower()]) if m and m.group(1) else (stem, 1)
+            groups.setdefault((os.path.relpath(root, images), key), []).append((side, os.path.join(root, f)))
+    if not groups:
+        sys.exit("画像が見つかりません")
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\r\n")
+    w.writerow(["ID", "表面画像", "裏面画像", "追加画像", "追加画像"])
+    n = 0
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for (folder, key), items in sorted(groups.items()):
+            items.sort()
+            paths = []
+            for _, src in items[:4]:
+                n += 1
+                arc = f"images/{n:05d}{os.path.splitext(src)[1].lower()}"
+                z.write(src, arc, compress_type=zipfile.ZIP_STORED)
+                paths.append(arc)
+            w.writerow([f"img:{folder}/{key}"] + paths + [""] * (4 - len(paths)))
+        z.writestr("cards.csv", "\ufeff" + buf.getvalue())
+    print(f"作成: {out}  名刺 {len(groups)}人 / 画像 {n}枚（氏名などは取り込み後にGeminiが読み取ります）")
+    single = [k for (_, k), v in groups.items() if len(v) == 1]
+    if single:
+        print(f"画像が1枚だけの人: {len(single)}人（裏面なしとして取り込みます）")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Meishi-Claude用のインポートZIPを作ります")
-    ap.add_argument("csv", help="名刺データのCSV（Eightの書き出しなど）")
+    ap.add_argument("csv", nargs="?", help="名刺データのCSV（省略すると画像だけで作成）")
     ap.add_argument("--images", help="名刺画像のフォルダ（サブフォルダも検索）")
     ap.add_argument("--front", help="表面画像のファイル名パターン 例: \"{名刺ID}_1.jpg\"")
     ap.add_argument("--back", help="裏面画像のファイル名パターン 例: \"{名刺ID}_2.jpg\"")
     ap.add_argument("-o", "--out", default="meishi-import.zip", help="出力ZIP（既定: meishi-import.zip）")
     a = ap.parse_args()
+    if not a.csv:
+        if not a.images:
+            ap.error("CSVか --images のどちらかを指定してください")
+        images_only(a.images, a.out)
+        return
 
     header, rows = read_csv(a.csv)
     index = {}
