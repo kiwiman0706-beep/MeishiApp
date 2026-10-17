@@ -48,13 +48,13 @@ const p = (id, name, company, status = "confirmed") => ({
   page.on("dialog", (d) => d.accept());
   await page.route("https://app.meishinote.local/**", (r) => {
     let file = new URL(r.request().url()).pathname.slice(1) || "index.html";
-    if (!["index.html", "app.js", "style.css"].includes(file))
+    if (!["index.html", "app.js", "style.css"].includes(file) && !/^lib\/[A-Za-z.-]+\.(js|css)$/.test(file))
       return r.fulfill({ status: 404, body: "" });
     r.fulfill({
       path: path.join(assets, file),
       contentType: file.endsWith("html")
         ? "text/html"
-        : file.endsWith("css")
+        : file.endsWith(".css")
           ? "text/css"
           : "application/javascript",
     });
@@ -110,16 +110,10 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: "名刺を撮影" }).click();
   let calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "quickScan" });
-  await page
-    .getByRole("button", { name: "カード表示と表表示を切り替え" })
-    .click();
+  await page.getByRole("tab", { name: "表" }).click();
   assert.equal(await page.locator("tbody tr").count(), 2);
   await page.locator("tbody tr").first().click();
-  assert(
-    await page
-      .getByRole("heading", { name: "山田 太郎（サンプル）" })
-      .isVisible(),
-  );
+  await page.getByRole("heading", { name: "山田 太郎（サンプル）" }).waitFor({ timeout: 5000 });
   await page.screenshot({
     path: path.join(screenshotDir, "03-detail.png"),
     fullPage: true,
@@ -284,6 +278,30 @@ const p = (id, name, company, status = "confirmed") => ({
   assert.equal(await page.getByRole("button", { name: "Google連絡先に登録" }).count(), 0);
   delete demo.people[0].contactRegistered;
   await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
+  // Calendar: exchange dates grouped by day; Google Calendar registration for the unregistered.
+  demo.people[0].metDate = "2026-10-16";
+  demo.people[1].metDate = "2026-10-16";
+  demo.people[0].geo = { q: "サンプル住所", lat: 34.69, lng: 135.5 };
+  demo.people[1].address = "大阪府大阪市北区1-1";
+  demo.people[1].geo = { q: "大阪府大阪市北区1-1", lat: 34.70, lng: 135.49 };
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); setLayout("calendar"); }, demo);
+  assert(await page.locator(".calgrid button.has").first().isVisible());
+  assert.equal(await page.locator(".calgrid button.has i").first().textContent(), "2");
+  await page.locator(".calgrid button.has").first().click();
+  assert.equal(await page.locator(".person.compact").count(), 2);
+  await page.screenshot({ path: path.join(screenshotDir, "14-calendar.png"), fullPage: true });
+  await page.getByRole("button", { name: /Googleカレンダーに登録（未登録 2件）/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "calendarRegister" });
+  // Map: opting in asks native to geocode; markers come from stored coordinates.
+  await page.evaluate(() => setLayout("map"));
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "mapOpen" });
+  await page.waitForFunction(() => window.L && cluster && cluster.getLayers().length === 2, null, { timeout: 10000 });
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo); // a background refresh keeps the same map
+  assert.equal(await page.evaluate(() => document.querySelectorAll(".map").length), 1);
+  await page.screenshot({ path: path.join(screenshotDir, "15-map.png") });
+  await page.evaluate(() => { layout = "cards"; go("home"); });
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });
@@ -321,7 +339,7 @@ const p = (id, name, company, status = "confirmed") => ({
   assert(!(await page.evaluate(() => window.pwned)));
   assert.equal(errors.length, 0, errors.join("\n"));
   console.log(
-    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings, Drive folder/import and 320–768px layout; HTML content escaping; no JS errors.",
+    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings, Drive folder/import, calendar, map and 320–768px layout; HTML content escaping; no JS errors.",
   );
   await browser.close();
 })().catch((e) => {

@@ -15,10 +15,10 @@ public final class Sync {
   // Device-specific fields: contact row ids differ per phone, queues are local work.
   static final String[] LOCAL = {
     "contactRawId", "contactAccount", "contactPhoto", "queue", "queueError",
-    "contactDuplicate", "suggestion", "contactUnlinked"
+    "contactDuplicate", "suggestion", "contactUnlinked", "calendarEventId"
   };
   static final String DELETED = "deleted";
-  public static final String ROOT_NAME = "Meishi-Claude データ";
+  public static final String ROOT_NAME = "Theta Meishi Hatch データ"; // only for a new folder; found by marker
 
   public static class Result {
     int up, down, merged, deleted, mediaUp, mediaDown;

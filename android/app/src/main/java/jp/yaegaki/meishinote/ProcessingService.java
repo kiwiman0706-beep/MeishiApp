@@ -22,7 +22,40 @@ public class ProcessingService extends Service {
     c.startForegroundService(new Intent(c, ProcessingService.class));
   }
 
-  static volatile boolean syncRequested = false;
+  static volatile boolean syncRequested = false, extrasRequested = false;
+
+  // Map geocoding and calendar registration: cheap no-ops when there is nothing to do.
+  public static void requestExtras(Context c) {
+    extrasRequested = true;
+    start(c);
+  }
+
+  void extras(StringBuilder report) {
+    extrasRequested = false;
+    android.content.SharedPreferences prefs = getSharedPreferences("prefs", 0);
+    try {
+      if (prefs.getBoolean("geoEnabled", false) && Geo.missing(Store.get(this)) > 0) {
+        Geo.fill(this, this::progress);
+        syncRequested = true;
+      }
+    } catch (Exception e) {
+      report.append(report.length() > 0 ? "\n" : "").append(e.getMessage());
+    }
+    try {
+      if ((prefs.getBoolean("autoCalendar", false) || prefs.getBoolean("calendarOnce", false))
+          && CalendarSync.allowed(this)) {
+        prefs.edit().remove("calendarOnce").apply();
+        int n = CalendarSync.registerAll(this, this::progress);
+        if (n > 0) {
+          report.append(report.length() > 0 ? "\n" : "").append("Googleカレンダーに名刺交換を").append(n).append("件登録しました");
+          syncRequested = true;
+        }
+      }
+    } catch (Exception e) {
+      report.append(report.length() > 0 ? "\n" : "").append("カレンダー登録：").append(e.getMessage());
+    }
+    tell("");
+  }
 
   public static void requestSync(Context c) {
     syncRequested = true;
@@ -43,7 +76,7 @@ public class ProcessingService extends Service {
             this, 3, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     return new Notification.Builder(this, "processing")
         .setSmallIcon(android.R.drawable.stat_notify_sync)
-        .setContentTitle(ongoing ? "Meishi-Claude：処理中" : "Meishi-Claude：処理が終わりました")
+        .setContentTitle(ongoing ? "Theta Meishi Hatch：処理中" : "Theta Meishi Hatch：処理が終わりました")
         .setContentText(text)
         .setStyle(new Notification.BigTextStyle().bigText(text))
         .setContentIntent(open)
@@ -131,6 +164,7 @@ public class ProcessingService extends Service {
         if (s.read + s.registered + s.updated > 0) syncRequested = true; // share what was just added
         if (s.halted) break;
       }
+      extras(report);
       if (syncRequested && getSharedPreferences("prefs", 0).getBoolean("syncEnabled", false)) sync(report);
     } catch (Exception e) {
       report.append("処理に失敗しました：").append(e.getMessage());

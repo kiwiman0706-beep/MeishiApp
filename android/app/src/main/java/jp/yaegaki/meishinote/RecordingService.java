@@ -49,7 +49,7 @@ public class RecordingService extends Service {
       Notification n =
           new Notification.Builder(this, "recording")
               .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-              .setContentTitle("名刺ノート：録音中")
+              .setContentTitle("Theta Meishi Hatch：録音中")
               .setContentText("タップでアプリを開く / 停止すると保存します")
               .setContentIntent(open)
               .setOngoing(true)

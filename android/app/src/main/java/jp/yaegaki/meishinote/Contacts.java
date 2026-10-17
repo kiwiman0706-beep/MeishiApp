@@ -139,7 +139,7 @@ public final class Contacts {
         row.make(Note.CONTENT_ITEM_TYPE)
             .withValue(
                 Note.NOTE,
-                "Meishi-Claudeから登録\n交換日: " + p.optString("metDate") + "\n交換場所: " + p.optString("metPlace"))
+                "Theta Meishi Hatchから登録\n交換日: " + p.optString("metDate") + "\n交換場所: " + p.optString("metPlace"))
             .build());
   }
 

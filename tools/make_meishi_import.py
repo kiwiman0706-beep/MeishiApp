@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a Meishi-Claude import ZIP (cards.csv + images/) from a CSV and an image folder.
+"""Build a Theta Meishi Hatch import ZIP (cards.csv + images/) from a CSV and an image folder.
 
 Format: docs/IMPORT_FORMAT.md. Standard library only (Python 3.8+).
 
@@ -103,7 +103,7 @@ def images_only(images, out):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Meishi-Claude用のインポートZIPを作ります")
+    ap = argparse.ArgumentParser(description="Theta Meishi Hatch用のインポートZIPを作ります")
     ap.add_argument("csv", nargs="?", help="名刺データのCSV（省略すると画像だけで作成）")
     ap.add_argument("--images", help="名刺画像のフォルダ（サブフォルダも検索）")
     ap.add_argument("--front", help="表面画像のファイル名パターン 例: \"{名刺ID}_1.jpg\"")

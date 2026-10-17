@@ -1,6 +1,6 @@
 # Google Drive連携の初期設定（1回だけ）
 
-Meishi-ClaudeがGoogle DriveのScanSnapフォルダを読み、取り込み済みのPDFを「登録済み」フォルダへ移動するには、Google Cloudに「このアプリからのDriveアクセス」を登録する必要があります。料金はかかりません。PCのブラウザで作業してください（10分程度）。
+Theta Meishi HatchがGoogle DriveのScanSnapフォルダを読み、取り込み済みのPDFを「登録済み」フォルダへ移動するには、Google Cloudに「このアプリからのDriveアクセス」を登録する必要があります。料金はかかりません。PCのブラウザで作業してください（10分程度）。
 
 ## 1. プロジェクトを作ってDrive APIを有効にする
 
@@ -12,7 +12,7 @@ Meishi-ClaudeがGoogle DriveのScanSnapフォルダを読み、取り込み済�
 ## 2. OAuth同意画面（Google Auth Platform）
 
 1. 「APIとサービス」→「OAuth同意画面」（または「Google Auth Platform」）を開き、「開始」。
-2. アプリ名 `Meishi-Claude`、サポートメールに自分のアドレス。
+2. アプリ名 `Theta Meishi Hatch`（既に `Meishi-Claude` で作った場合はそのままで動きます）、サポートメールに自分のアドレス。
 3. 対象（ユーザーの種類）は **外部**。
 4. 「対象」→「テストユーザー」に**自分のGoogleアカウント**を追加します。
 5. 公開ステータスは「テスト」のままで構いません（自分だけが使うため）。
@@ -28,7 +28,7 @@ Meishi-ClaudeがGoogle DriveのScanSnapフォルダを読み、取り込み済�
    A1:13:EA:34:83:60:56:32:E7:F5:94:4E:4E:8C:20:55:DD:AE:28:BA
    ```
 
-   （Meishi-Claudeの署名鍵 `meishiclaude-release.jks` のものです。鍵を作り直した場合は `keytool -list -v -keystore meishiclaude-release.jks` で表示されるSHA1に変えてください。）
+   （アプリの署名鍵 `meishiclaude-release.jks` のものです。鍵を作り直した場合は `keytool -list -v -keystore meishiclaude-release.jks` で表示されるSHA1に変えてください。）
 5. 作成。クライアントIDをアプリに入力する必要はありません（パッケージ名と署名でGoogle側が判別します）。
 
 反映まで数分かかることがあります。

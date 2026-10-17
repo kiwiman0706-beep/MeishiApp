@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.8.0での変更（Theta Meishi Hatchに改名）
+
+- 表示名のみ変更。applicationId `jp.yaegaki.meishiclaude`・署名・Driveの同期フォルダ（印で検索）・OAuth設定は従来どおり。
+- `CalendarSync`：CalendarContractで終日予定を1人1件登録。`calendarEventId` は端末ごと（Sync.LOCAL）、`calendarRegistered` は共有。保存で更新、削除で削除、統合時は統合元の予定を削除。登録先は選択済み → 連絡先アカウントの主カレンダー → 任意の書き込み可能なGoogleカレンダー。自動登録（`autoCalendar`）と一括登録（`calendarOnce`）は `ProcessingService.extras` で実行。
+- `Geo`：Android Geocoderで住所→緯度経度、`geo: {lat, lng, q}`（共有）。地図を初めて開いた時（`geoEnabled`）から有効。同じ住所はキャッシュ。
+- 地図：`assets/lib/` にLeaflet 1.9.4・markercluster 1.5.3を同梱（ライセンス同梱）。WebViewは `/lib/*.js|css` を配信し、`tile.openstreetmap.org` のGETだけ外部読み込みを許可（CSP img-src も同様）。地図要素は再描画をまたいで使い回す（`mountMap`）。アプリ全体の `svg {22px}` 指定は `.leaflet-container svg` で打ち消している。
+
 ## 0.6.0での変更
 
 - `Sync.java`：Drive同期（仕様は `SYNC_SPEC.md`）。判定は純粋関数 `Sync.decide(lh, rh, ih)` に集約し、`SyncTest` で全パターンを固定。端末側の前回状態は `vault/sync.json`、削除は `data.json` の `tombstones`。

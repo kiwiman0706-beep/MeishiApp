@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release build for Meishi-Claude. The keystore is personal and never committed:
+# Release build for Theta Meishi Hatch. The keystore is personal and never committed:
 # pass SIGNING_FILE / SIGNING_PASS_FILE, or keep them in ../private-signing/.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -9,7 +9,7 @@ BUILD_TOOLS="$SDK_DIR/build-tools/35.0.0"
 SIGNING_FILE="${SIGNING_FILE:-../private-signing/meishiclaude-release.jks}"
 SIGNING_PASS_FILE="${SIGNING_PASS_FILE:-../private-signing/keystore-password.txt}"
 VERSION="$(sed -n "s/.*versionName '\(.*\)'.*/\1/p" app/build.gradle)"
-OUT="build/meishi-claude-$VERSION.apk"
+OUT="build/theta-meishi-hatch-$VERSION.apk"
 export ANDROID_SDK_ROOT="$SDK_DIR"
 ./gradlew :app:assembleRelease --no-daemon
 mkdir -p build

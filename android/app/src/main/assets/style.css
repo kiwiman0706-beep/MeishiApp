@@ -1356,3 +1356,124 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
 }
+.views {
+  display: flex;
+  gap: 4px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px;
+  margin-bottom: 12px;
+}
+.views button {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 2px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.views button svg {
+  width: 16px;
+  height: 16px;
+}
+.views button.active {
+  background: var(--pale);
+  color: var(--green);
+  font-weight: 700;
+}
+.cal {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.calhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.calhead select {
+  flex: 1;
+  text-align: center;
+}
+.calgrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  text-align: center;
+}
+.calgrid b {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 2px 0;
+}
+.calgrid b:first-child {
+  color: var(--red);
+}
+.calgrid button {
+  min-height: 44px;
+  padding: 4px 0;
+  border-radius: 10px;
+  font-size: 13px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+}
+.calgrid button:disabled {
+  color: #b9c2bc;
+  opacity: 1;
+}
+.calgrid button.has {
+  background: var(--pale);
+  color: var(--green);
+  font-weight: 700;
+}
+.calgrid button.sel {
+  background: var(--green);
+  color: #fff;
+}
+.calgrid button i {
+  font-style: normal;
+  font-size: 10px;
+  line-height: 1;
+}
+.person.compact {
+  min-height: 0;
+  padding: 10px 14px;
+}
+.mapslot {
+  margin-bottom: 8px;
+}
+.map {
+  height: min(62vh, 560px);
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+  z-index: 0;
+}
+.leaflet-popup-content button.link {
+  min-height: 32px;
+  padding: 4px 0;
+}
+.map {
+  position: relative;
+  isolation: isolate;
+}
+/* The app's icon rule (svg 22px, stroke) must not reach Leaflet's vector layer. */
+.leaflet-container svg {
+  width: auto;
+  height: auto;
+  max-width: none;
+  vertical-align: baseline;
+}

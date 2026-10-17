@@ -6,7 +6,7 @@ Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイ
 
 ```
 マイドライブ/
-└── Meishi-Claude データ/        appProperties: meishiRoot=1
+└── Theta Meishi Hatch データ/   appProperties: meishiRoot=1（0.7.0以前に作ったものは「Meishi-Claude データ」）
     ├── people/                  appProperties: meishiPeople=1
     │   ├── <人物ID>.json         appProperties: pid=<人物ID>, h=<内容ハッシュ>
     │   └── ...

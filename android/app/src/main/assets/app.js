@@ -175,6 +175,7 @@ function render() {
             ? editPage()
             : detail();
   $("app").innerHTML = `<main class="shell">${page}</main>${nav()}`;
+  afterRender();
 }
 function backbar(text, right = "") {
   return `<div class="backbar"><button onclick="handleBack()" aria-label="戻る">${icon("back")}</button><h2>${text}</h2>${right}</div>`;
@@ -219,6 +220,8 @@ function listContent() {
     return state.people.length
       ? `<div class="empty"><h2>該当する名刺がありません</h2><p>検索条件を変えてみてください。</p></div>`
       : `<div class="empty"><div class="emptyart"><div class="miniCard back"></div><div class="miniCard"><i></i><i></i><i></i></div><div class="spark">${icon("camera")}</div></div><h2>はじめての1枚を、ここへ。</h2><p>下の「撮影」を押して名刺を映すだけ。<br>表・裏を撮って完了すると、自動で読み取ります。</p></div>`;
+  if (layout === "calendar") return calendarView(a);
+  if (layout === "map") return mapView(a);
   if (layout === "table")
     return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" onclick="openPerson('${p.id}')"><td>${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
   return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
@@ -251,7 +254,17 @@ function home() {
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">MEISHI CLAUDE</div><h1>名刺ノート</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div><button class="iconbtn toggle ${layout === "table" ? "active" : ""}" onclick="layout=layout==='table'?'cards':'table';render()" aria-label="カード表示と表表示を切り替え">${icon(layout === "table" ? "card" : "table")}</button></div>${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
+    ["cards", "リスト", "list"],
+    ["table", "表", "table"],
+    ["calendar", "カレンダー", "clock"],
+    ["map", "地図", "map"],
+  ]
+    .map(
+      ([v, l, ic]) =>
+        `<button role="tab" aria-selected="${layout === v}" class="${layout === v ? "active" : ""}" onclick="setLayout('${v}')">${icon(ic)}${l}</button>`,
+    )
+    .join("")}</div>` : ""}${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
     ["newest", "追加日が新しい順"],
     ["updated", "更新日が新しい順"],
     ["name", "氏名順"],
@@ -266,6 +279,145 @@ function home() {
 function updateList() {
   $("results").innerHTML = listContent();
   if ($("count")) $("count").textContent = filtered().length + " 件";
+  afterRender();
+}
+function setLayout(v) {
+  layout = v;
+  if (v === "map") call("mapOpen");
+  render();
+}
+function afterRender() {
+  if (route === "home" && layout === "map" && $("mapslot")) mountMap();
+}
+
+// ---- Calendar ------------------------------------------------------------------
+// Month grid of exchange dates; tapping a day lists who you met.
+let calMonth = "",
+  calDay = "";
+function calendarView(list) {
+  const dated = list.filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.metDate || ""));
+  const byDay = {};
+  for (const p of dated) (byDay[p.metDate] = byDay[p.metDate] || []).push(p);
+  const months = {};
+  for (const d of Object.keys(byDay)) months[d.slice(0, 7)] = (months[d.slice(0, 7)] || 0) + byDay[d].length;
+  const keys = Object.keys(months).sort();
+  if (!calMonth) calMonth = keys.at(-1) || new Date().toISOString().slice(0, 7);
+  const [y, m] = calMonth.split("-").map(Number);
+  const first = new Date(y, m - 1, 1).getDay(),
+    days = new Date(y, m, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < first; i++) cells.push(`<span></span>`);
+  for (let d = 1; d <= days; d++) {
+    const key = `${calMonth}-${String(d).padStart(2, "0")}`;
+    const n = byDay[key]?.length || 0;
+    cells.push(
+      `<button class="${n ? "has" : ""} ${calDay === key ? "sel" : ""}" ${n ? `onclick="calDay='${key}';updateList()"` : "disabled"}>${d}${n ? `<i>${n}</i>` : ""}</button>`,
+    );
+  }
+  const shift = (k) => {
+    const i = keys.indexOf(calMonth);
+    return k < 0 ? keys.filter((x) => x < calMonth).at(-1) : keys.find((x) => x > calMonth);
+  };
+  const prev = shift(-1),
+    next = shift(1);
+  const picked = calDay.startsWith(calMonth) ? byDay[calDay] || [] : [];
+  const pending = state.people.filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.metDate || "") && !p.calendarRegistered && !p.calendarEventId).length;
+  return `<div class="cal"><div class="calhead"><button class="iconbtn" ${prev ? `onclick="calMonth='${prev}';calDay='';updateList()"` : "disabled"} aria-label="前の月">${icon("back")}</button><select aria-label="月" onchange="calMonth=this.value;calDay='';updateList()">${(keys.includes(calMonth) ? keys : [...keys, calMonth].sort())
+    .map((k) => `<option value="${k}" ${k === calMonth ? "selected" : ""}>${k.slice(0, 4)}年${Number(k.slice(5))}月${months[k] ? `（${months[k]}人）` : ""}</option>`)
+    .join("")}</select><button class="iconbtn" ${next ? `onclick="calMonth='${next}';calDay='';updateList()"` : "disabled"} aria-label="次の月">${icon("next")}</button></div><div class="calgrid">${["日", "月", "火", "水", "木", "金", "土"].map((w) => `<b>${w}</b>`).join("")}${cells.join("")}</div></div>${
+    picked.length
+      ? `<p class="caption">${esc(calDay.replace(/-/g, "/"))} に名刺交換した人（${picked.length}人）</p><div class="cardlist">${picked.map((p) => `<button class="person compact" onclick="openPerson('${p.id}')"><div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}${p.metPlace ? " ・ " + esc(p.metPlace) : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`
+      : `<p class="caption center">色の付いた日を押すと、その日に会った人を表示します。名刺交換日のない名刺 ${list.length - dated.length}件は表示されません。</p>`
+  }<button class="${pending ? "secondary" : "outline"} full gap" onclick="calendarRegister(${pending})">${icon("clock")}${pending ? `Googleカレンダーに登録（未登録 ${pending}件）` : "Googleカレンダーの設定"}</button>`;
+}
+function calendarRegister(pending) {
+  if (!pending) return calendarSettings();
+  if (confirm(`名刺交換日を${pending}件、Googleカレンダーに終日の予定「名刺交換：氏名（会社）」として登録します。続けますか？`))
+    call("calendarRegister");
+}
+function calendarSettings() {
+  call("calendarList");
+}
+function calendarSheet(data) {
+  modal(
+    `<h2>${icon("clock")} Googleカレンダー</h2><label class="mrow"><span class="mi">${icon("clock")}</span><span class="mt"><b>名刺交換を自動で登録</b><small>新しい名刺の交換日をカレンダーに追加</small></span><input type="checkbox" class="switch" ${state.autoCalendar ? "checked" : ""} onchange="call('settings',{autoCalendar:this.checked})"></label><label class="label">登録先のカレンダー</label><select onchange="call('calendarSelect',{calendarId:Number(this.value)})">${data.list
+      .map((k) => `<option value="${k.id}" ${k.id === data.selected ? "selected" : ""}>${esc(k.name)}（${esc(k.account)}）</option>`)
+      .join("") || "<option>Googleカレンダーが見つかりません</option>"}</select><p class="caption">予定は終日・「予定なし」扱いで登録します。名刺の交換日や氏名を直すと予定も更新し、名刺を削除すると予定も削除します。</p>`,
+  );
+}
+
+// ---- Map -----------------------------------------------------------------------
+// The Leaflet map lives in one element reused across renders, so background updates
+// (which re-render the page) don't reset the user's pan and zoom.
+let mapEl = null,
+  leaflet = null,
+  cluster = null,
+  mapSig = "",
+  mapLoading = false;
+function mapView(list) {
+  const withAddr = list.filter((p) => (p.address || "").trim());
+  const placed = withAddr.filter((p) => p.geo && p.geo.lat != null && p.geo.q === p.address.replace(/\n/g, " ").trim());
+  const waiting = withAddr.filter((p) => !p.geo || p.geo.q !== p.address.replace(/\n/g, " ").trim()).length;
+  return `<div id="mapslot" class="mapslot"></div><p class="caption">地図に表示 ${placed.length}人${waiting ? ` ・ 住所を変換中 ${waiting}人` : ""}${withAddr.length - placed.length - waiting ? ` ・ 場所が見つからない住所 ${withAddr.length - placed.length - waiting}人` : ""} ・ 住所なし ${list.length - withAddr.length}人</p><p class="caption">地図 © OpenStreetMap contributors。住所は端末の位置変換機能（Google）で緯度経度にします。</p>`;
+}
+function loadScript(src) {
+  return new Promise((ok, ng) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = ok;
+    s.onerror = ng;
+    document.head.appendChild(s);
+  });
+}
+function mountMap() {
+  if (!window.L) {
+    if (mapLoading) return;
+    mapLoading = true;
+    for (const href of ["/lib/leaflet.css", "/lib/MarkerCluster.css", "/lib/MarkerCluster.Default.css"]) {
+      const l = document.createElement("link");
+      l.rel = "stylesheet";
+      l.href = href;
+      document.head.appendChild(l);
+    }
+    loadScript("/lib/leaflet.js")
+      .then(() => loadScript("/lib/leaflet.markercluster.js"))
+      .then(() => {
+        mapLoading = false;
+        afterRender();
+      })
+      .catch(() => {
+        mapLoading = false;
+        toast("地図を読み込めませんでした");
+      });
+    return;
+  }
+  if (!mapEl) {
+    mapEl = document.createElement("div");
+    mapEl.className = "map";
+    $("mapslot").appendChild(mapEl);
+    leaflet = L.map(mapEl, { zoomControl: true }).setView([35.0, 135.5], 5);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(leaflet);
+    cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45 });
+    leaflet.addLayer(cluster);
+  } else $("mapslot").appendChild(mapEl);
+  leaflet.invalidateSize();
+  const pts = filtered().filter((p) => p.geo && p.geo.lat != null);
+  const sig = pts.map((p) => p.id + p.geo.lat + p.geo.lng + title(p) + company(p)).join("|");
+  if (sig === mapSig) return;
+  const first = !mapSig;
+  mapSig = sig;
+  cluster.clearLayers();
+  for (const p of pts) {
+    const m = L.circleMarker([p.geo.lat, p.geo.lng], { radius: 8, color: "#fff", weight: 2, fillColor: "#176d61", fillOpacity: 0.9 });
+    m.bindPopup(
+      `<b>${esc(title(p))}</b><br>${esc(company(p))}${p.metDate ? `<br><small>${esc(p.metDate.replace(/-/g, "/"))}</small>` : ""}<br><button class="link" onclick="openPerson('${p.id}')">名刺を開く</button>`,
+    );
+    cluster.addLayer(m);
+  }
+  if (first && pts.length) leaflet.fitBounds(L.latLngBounds(pts.map((p) => [p.geo.lat, p.geo.lng])), { padding: [24, 24], maxZoom: 14 });
 }
 
 // ---- Detail -----------------------------------------------------------------
@@ -690,7 +842,7 @@ function importZipSheet() {
 function syncStart() {
   if (
     confirm(
-      "Google Driveのマイドライブに「Meishi-Claude データ」フォルダを作り、名刺・画像・メモ・録音を同期します。他の端末で同じGoogleアカウントの同期をオンにすると、データが共有されます。始めますか？",
+      "Google Driveのマイドライブに「Theta Meishi Hatch データ」フォルダを作り、名刺・画像・メモ・録音を同期します。他の端末で同じGoogleアカウントの同期をオンにすると、データが共有されます。始めますか？",
     )
   )
     call("syncNow");
@@ -732,8 +884,9 @@ function menuPage() {
     menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
     `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
+    menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Meishi-Claude 0.7.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch 0.8.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -838,6 +991,7 @@ window.onNative = ({ type, data }) => {
   }
   else if (type === "review") pendingEdit = data;
   else if (type === "driveFolders") driveSheet(data);
+  else if (type === "calendars") calendarSheet(data);
   else if (type === "queued") {
     route = route === "edit" ? route : "home";
     toast(

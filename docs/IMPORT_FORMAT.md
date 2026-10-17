@@ -1,6 +1,6 @@
 # インポートファイルの仕様（Eightなどからの移行用）
 
-Meishi-Claudeの「メニュー → Eightなどからインポート」で読み込むファイルの形式です。
+Theta Meishi Hatchの「メニュー → ZIPから一括取り込み」で読み込むファイルの形式です。
 
 ## 全体の形
 
@@ -106,4 +106,4 @@ python tools/make_meishi_import.py --images ./downloaded -o meishi-import.zip
 - 見つからなかった画像は一覧で表示します。その人は画像なしで取り込まれます。
 - ZIP内の画像名は連番に付け替えます（日本語のファイル名でも問題が起きないように）。
 
-できたZIPをGoogle Driveやスマホに置き、アプリの「Eightなどからインポート」で選んでください。
+できたZIPをGoogle Driveやスマホに置き、アプリの「ZIPから一括取り込み」で選んでください。

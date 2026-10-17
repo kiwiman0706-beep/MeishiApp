@@ -95,6 +95,10 @@ public class MainActivity extends Activity {
           public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
             Uri u = r.getUrl();
             try {
+              // Map tiles are the only outside content the page may load (see index.html CSP).
+              if ("tile.openstreetmap.org".equals(u.getHost())
+                  && "https".equals(u.getScheme())
+                  && "GET".equals(r.getMethod())) return null;
               if (!"app.meishinote.local".equals(u.getHost()) || !"https".equals(u.getScheme()))
                 return blocked();
               String p = u.getPath();
@@ -102,6 +106,10 @@ public class MainActivity extends Activity {
                 return response("text/html", getAssets().open("index.html"));
               if (p.equals("/style.css"))
                 return response("text/css", getAssets().open("style.css"));
+              if (p.matches("/lib/[A-Za-z.-]+\\.(js|css)"))
+                return response(
+                    p.endsWith(".js") ? "application/javascript" : "text/css",
+                    getAssets().open(p.substring(1)));
               if (p.equals("/app.js"))
                 return response("application/javascript", getAssets().open("app.js"));
               if (p.startsWith("/media/")) {
@@ -208,6 +216,8 @@ public class MainActivity extends Activity {
           .put("driveFolderName", prefs().getString("driveFolderName", ""))
           .put("autoContact", prefs().getBoolean("autoContact", true))
           .put("syncEnabled", prefs().getBoolean("syncEnabled", false))
+          .put("autoCalendar", prefs().getBoolean("autoCalendar", false))
+          .put("calendarName", CalendarSync.allowed(this) ? CalendarSync.calendarName(this) : "")
           .put("lastSync", prefs().getLong("lastSync", 0))
           .put("syncError", prefs().getString("syncError", ""))
           .put("processing", ProcessingService.running ? ProcessingService.status : "")
@@ -427,7 +437,7 @@ public class MainActivity extends Activity {
       Runnable next = afterPermission;
       afterPermission = null;
       if (granted && next != null) next.run();
-      else event("error", "必要な権限が許可されませんでした。設定 → アプリ → 名刺ノート → 権限から変更できます。");
+      else event("error", "必要な権限が許可されませんでした。設定 → アプリ → Theta Meishi Hatch → 権限から変更できます。");
     }
   }
 
@@ -496,6 +506,11 @@ public class MainActivity extends Activity {
           JSONObject p = store.person(id);
           p.remove("queueError");
           store.put(p);
+          try {
+            CalendarSync.update(this, store.person(id));
+          } catch (Exception ignored) {
+            // calendar is secondary; the card itself is saved
+          }
           refresh();
           event("saved", id);
           // Edits reach the Google contact this app created; unregistered people can opt in.
@@ -516,6 +531,7 @@ public class MainActivity extends Activity {
         {
           if (id.equals(RecordingService.activeId)) throw new IOException("録音を停止してから削除してください");
           JSONObject p = store.person(id);
+          CalendarSync.remove(this, p);
           if (q.optBoolean("withContact") && p.has("contactRawId")) {
             permission(
                 new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
@@ -651,6 +667,7 @@ public class MainActivity extends Activity {
           if (!RecordingService.activeId.isEmpty()) throw new IOException("録音を停止してください");
           String sourceId = q.getString("sourceId");
           JSONObject target = store.person(id), source = store.person(sourceId);
+          CalendarSync.remove(this, source); // the merged person gets (or keeps) one event
           boolean targetLinked = Contacts.registered(this, target),
               sourceLinked = Contacts.registered(this, source);
           store.mergePeople(id, sourceId);
@@ -733,6 +750,44 @@ public class MainActivity extends Activity {
       case "driveClear":
         prefs().edit().remove("driveFolderId").remove("driveFolderName").apply();
         refresh();
+        break;
+      case "mapOpen":
+        // First map view opts in to sending addresses to the platform geocoder.
+        prefs().edit().putBoolean("geoEnabled", true).apply();
+        if (Geo.missing(store) > 0) {
+          ProcessingService.requestExtras(this);
+          event("toast", "住所を地図用に変換しています（バックグラウンド）");
+        }
+        break;
+      case "calendarRegister":
+        permission(
+            new String[] {Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR},
+            () -> {
+              prefs().edit().putBoolean("calendarOnce", true).apply();
+              ProcessingService.requestExtras(this);
+              event("toast", "Googleカレンダーに登録します（バックグラウンド）");
+            });
+        break;
+      case "calendarList":
+        permission(
+            new String[] {Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR},
+            () -> {
+              try {
+                long current = -1;
+                try {
+                  current = CalendarSync.calendarId(this);
+                } catch (Exception ignored) {
+                }
+                event("calendars", new JSONObject().put("list", CalendarSync.calendars(this)).put("selected", current));
+              } catch (Exception e) {
+                error(e);
+              }
+            });
+        break;
+      case "calendarSelect":
+        prefs().edit().putLong("calendarId", q.getLong("calendarId")).apply();
+        refresh();
+        event("toast", "登録先のカレンダーを変更しました");
         break;
       case "syncNow":
         // Through the activity so Google can ask the user if access has lapsed; the
@@ -823,7 +878,12 @@ public class MainActivity extends Activity {
           }
           if (q.optBoolean("clearAccount")) e.remove("contactAccount");
           if (q.has("autoContact")) e.putBoolean("autoContact", q.getBoolean("autoContact"));
+          if (q.has("autoCalendar")) e.putBoolean("autoCalendar", q.getBoolean("autoCalendar"));
           e.apply();
+          if (q.optBoolean("autoCalendar"))
+            permission(
+                new String[] {Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR},
+                () -> ProcessingService.requestExtras(this));
           if (q.optBoolean("autoContact"))
             contactSetup(
                 () -> {

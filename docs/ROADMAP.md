@@ -1,4 +1,4 @@
-# ロードマップ（Meishi-Claude）
+# ロードマップ（Theta Meishi Hatch）
 
 ## 目標の全体像
 
