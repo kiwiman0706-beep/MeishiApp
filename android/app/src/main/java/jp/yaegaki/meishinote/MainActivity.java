@@ -636,6 +636,48 @@ public class MainActivity extends Activity {
           refresh();
           break;
         }
+      case "contactCandidates":
+        // Contacts already on the phone that match this card, for the merge / delete sheet.
+        permission(
+            new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+            () ->
+                task(
+                    "連絡先を探しています",
+                    () ->
+                        event(
+                            "contactCandidates",
+                            new JSONObject()
+                                .put("id", id)
+                                .put("mode", q.optString("mode"))
+                                .put("list", Contacts.candidates(this, store.person(id))))));
+        break;
+      case "contactMerge":
+        permission(
+            new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+            () ->
+                task(
+                    "連絡先を統合中",
+                    () -> {
+                      JSONObject p = store.person(id);
+                      Contacts.mergeInto(this, p, q.getLong("rawId"), prefs().getString("contactPhoto", "card"));
+                      store.put(p);
+                      event("toast", "既存の連絡先に名刺の内容を書き足して、1件にまとめました");
+                    }));
+        break;
+      case "contactDeleteExisting":
+        permission(
+            new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+            () ->
+                task(
+                    "連絡先を削除中",
+                    () -> {
+                      Contacts.deleteExisting(this, q.getLong("rawId"));
+                      JSONObject p = store.person(id);
+                      p.remove("contactDuplicate");
+                      store.put(p);
+                      event("toast", "既存の連絡先を削除しました（Googleコンタクトのゴミ箱に30日間残ります）");
+                    }));
+        break;
       case "unlinkContact":
         // Keeps the card, removes the contact this app added (the pre-existing one stays).
         permission(
@@ -748,9 +790,12 @@ public class MainActivity extends Activity {
                       () -> {
                         JSONObject t = store.person(id);
                         if (targetLinked && sourceLinked) Contacts.remove(this, source);
-                        else if (sourceLinked)
-                          t.put("contactRawId", source.getLong("contactRawId"))
-                              .put("contactAccount", source.optString("contactAccount"));
+                        else if (sourceLinked) {
+                          long raw = source.getLong("contactRawId");
+                          Contacts.relink(this, raw, sourceId, id);
+                          t.put("contactRawId", raw).put("contactAccount", source.optString("contactAccount"));
+                          if (source.optBoolean("contactMerged")) t.put("contactMerged", true);
+                        }
                         t.remove("contactDuplicate");
                         store.put(t);
                         Contacts.update(this, store.person(id));

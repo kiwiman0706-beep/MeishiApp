@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.11.1での変更（既存のGoogle連絡先との統合・削除）
+
+- 重複表示（`contactDuplicate`）に「既存と統合」「既存を削除」を追加。押すと `contactCandidates` で端末の連絡先から一致するもの（電話・メール・氏名）を探し、`Contacts.candidates` が候補（raw contact・アカウント・会社/電話/メール・写真の有無）を返す。会社の代表番号で同僚も一致しうるので、必ず利用者が選ぶ。このアプリが作った連絡先（MARKER行あり）は候補に出さない。
+- 統合（`Contacts.mergeInto`）：既存の連絡先に、名刺にあって既存に無いもの（電話・メール・Web、無ければ氏名・会社・住所）だけを書き足す。メモ欄と既存の値は変えない。写真が無ければ名刺画像を入れる。アプリが追加した方は削除し、既存の方にMARKER行を付けてつなぐ（`contactMerged`、端末固有の項目）。以後の編集反映（`update`）は書き足しのみ、名刺削除時（`remove`）はMARKER行を外すだけで連絡先は残す。
+- 既存を削除（`Contacts.deleteExisting`）：選んだ連絡先を削除（Googleのゴミ箱に30日）。
+- 修正：名刺の「1人にまとめる」で統合元の連絡先を引き継ぐとき、MARKER行のidを統合先へ付け替える（`Contacts.relink`）。以前は引き継ぎ後の連絡先更新が「見つかりません」になっていた。
+
 ## デスクトップ版 0.1.0（Windows / Mac）
 
 - `desktop/`：Electron。DBを持たず、Theta Vault フォルダ（Googleドライブ for desktop の同期フォルダ）を直接読み書きする。端末固有の項目（`Sync.LOCAL` 相当）は userData の `overlay.json`。

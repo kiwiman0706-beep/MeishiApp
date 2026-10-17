@@ -509,7 +509,7 @@ function detail() {
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。${contactDupButtons(p.id)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
@@ -742,7 +742,7 @@ function dupSheet() {
     .map((d) => {
       if (d.contact) {
         const p = byId[d.contact];
-        return `<div class="dupitem">${who(p)}<p class="caption">Google連絡先に既存の「${esc(p.contactDuplicate)}」があります（同じ電話・メール）。</p><div class="row"><button class="outline" onclick="closeModal();unlinkContact('${p.id}')">追加した連絡先を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'});closeModal()">問題なし</button></div></div>`;
+        return `<div class="dupitem">${who(p)}<p class="caption">Google連絡先に既存の「${esc(p.contactDuplicate)}」があります（同じ電話・メール）。</p>${contactDupButtons(p.id)}</div>`;
       }
       // Keep the newer card as the base: it carries the current title and contact details.
       const [older, newer] = [byId[d.a], byId[d.b]].sort((x, y) => x.created - y.created);
@@ -752,6 +752,42 @@ function dupSheet() {
   modal(
     `<h2>${icon("link")} 重複の可能性</h2><p class="caption">「1人にまとめる」は新しい名刺の内容を優先し、古い名刺の画像・メモ・録音を引き継ぎます。Google連絡先も1件にまとめます。</p>${items || '<p class="caption">重複の可能性はありません。</p>'}`,
   );
+}
+// A card whose new Google contact matches one that was already there: merge into it, delete
+// the old one, delete the one just added, or keep both.
+function contactDupButtons(id) {
+  return `<div class="row gap"><button class="primary" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'merge'})">${icon("link")}既存と統合</button><button class="outline" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'delete'})">既存を削除</button></div><div class="row gap"><button class="outline" onclick="closeModal();unlinkContact('${id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${id}'});closeModal()">問題なし</button></div>`;
+}
+// The phone's contacts that match the card; the person picks which one (a company's main
+// number can match colleagues too).
+function contactCandidateSheet({ id, mode, list }) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) return;
+  const merge = mode === "merge";
+  window.contactCandidates = list;
+  const rows = list
+    .map(
+      (c, i) =>
+        `<div class="dupitem"><p><b>${esc(c.name)}</b><br><small class="caption">${esc(c.account)} ・ 一致：${esc(c.why)}${c.photo ? " ・ 写真あり" : ""}</small></p>${c.detail ? `<p class="caption">${esc(c.detail)}</p>` : ""}<button class="${merge ? "primary" : "danger"} full" onclick="contactCandidatePick(${i},'${esc(id)}','${merge ? "merge" : "delete"}')">${merge ? `${icon("link")}この連絡先と統合` : `${icon("trash")}この連絡先を削除`}</button></div>`,
+    )
+    .join("");
+  modal(
+    `<h2>${icon(merge ? "link" : "trash")} ${merge ? "既存の連絡先と統合" : "既存の連絡先を削除"}</h2><p class="caption">${
+      merge
+        ? `「${esc(title(p))}」の名刺の電話・メール・会社などを、選んだ連絡先に書き足します。その連絡先にある情報は消しません（写真が無ければ名刺の画像を入れます）。このアプリが追加した方の連絡先は削除し、名刺は選んだ連絡先とつながります。`
+        : "選んだ連絡先をGoogle連絡先から削除します。Googleコンタクトのゴミ箱に30日間残ります。このアプリが追加した連絡先は残ります。"
+    }</p>${rows || '<p class="caption">一致する連絡先が見つかりません。すでに削除・統合済みかもしれません。</p>'}${rows ? "" : `<button class="outline full gap" onclick="call('dismissContactDup',{id:'${esc(id)}'});closeModal()">この表示を消す</button>`}`,
+  );
+}
+function contactCandidatePick(i, id, mode) {
+  const c = window.contactCandidates[i];
+  const ok =
+    mode === "merge"
+      ? confirm(`「${c.name}」に名刺の内容を書き足して、1件にまとめますか？`)
+      : confirm(`「${c.name}」をGoogle連絡先から削除しますか？`);
+  if (!ok) return;
+  closeModal();
+  call(mode === "merge" ? "contactMerge" : "contactDeleteExisting", { id, rawId: c.rawId });
 }
 function mergePair(target, source) {
   if (!confirm("2枚の名刺を1人にまとめますか？")) return;
@@ -1043,7 +1079,7 @@ function menuPage() {
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.11.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.11.1 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -1148,6 +1184,7 @@ window.onNative = ({ type, data }) => {
   }
   else if (type === "review") pendingEdit = data;
   else if (type === "driveFolders") driveSheet(data);
+  else if (type === "contactCandidates") contactCandidateSheet(data);
   else if (type === "calendars") calendarSheet(data);
   else if (type === "queued") {
     route = route === "edit" ? route : "home";

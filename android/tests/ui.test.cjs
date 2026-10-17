@@ -232,6 +232,28 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: "問題なし" }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "dismissContactDup", id: "demo-2" });
+  // Contact duplicates: merge into / delete the contact that was already there, picked from a list.
+  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  await page.getByRole("button", { name: /既存と統合/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "contactCandidates", id: "demo-2", mode: "merge" });
+  const candidates = [
+    { rawId: 41, name: "佐藤 花子", account: "me@gmail.com", why: "電話・氏名", detail: "サンプル医療センター / 090-0000-0000", photo: true },
+    { rawId: 42, name: "受付", account: "me@gmail.com", why: "電話", detail: "03-0000-0000", photo: false },
+  ];
+  await page.evaluate((list) => onNative({ type: "contactCandidates", data: { id: "demo-2", mode: "merge", list } }), candidates);
+  assert(await page.getByText("一致：電話・氏名 ・ 写真あり").isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "10b-contact-merge.png") });
+  await page.getByRole("button", { name: /この連絡先と統合/ }).first().click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "contactMerge", id: "demo-2", rawId: 41 });
+  await page.evaluate((list) => onNative({ type: "contactCandidates", data: { id: "demo-2", mode: "delete", list } }), candidates);
+  await page.getByRole("button", { name: /この連絡先を削除/ }).nth(1).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "contactDeleteExisting", id: "demo-2", rawId: 42 });
+  await page.evaluate(() => onNative({ type: "contactCandidates", data: { id: "demo-2", mode: "delete", list: [] } }));
+  assert(await page.getByText("一致する連絡先が見つかりません").isVisible());
+  await page.evaluate(() => closeModal());
   // Deleting a registered person offers removing the Google contact too.
   await page.evaluate(() => { closeModal(); openPerson("demo-1"); deletePerson(); });
   await page.getByRole("button", { name: /名刺と連絡先を削除/ }).click();
