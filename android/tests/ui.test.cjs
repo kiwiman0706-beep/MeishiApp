@@ -269,7 +269,7 @@ const p = (id, name, company, status = "confirmed") => ({
   demo.syncEnabled = true;
   demo.lastSync = Date.now();
   await page.evaluate((d) => { onNative({ type: "state", data: d }); go("menu"); }, demo);
-  assert(await page.getByRole("button", { name: /今すぐ同期 最終同期/ }).isVisible());
+  assert(await page.getByRole("button", { name: /今すぐ同期 Theta Vault ・ 最終同期/ }).isVisible());
   await page.screenshot({ path: path.join(screenshotDir, "12-sync-menu.png"), fullPage: true });
   // A card registered on another device offers no second registration.
   demo.people[0].contactRegistered = true;

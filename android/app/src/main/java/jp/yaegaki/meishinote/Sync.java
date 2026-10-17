@@ -1,16 +1,12 @@
 package jp.yaegaki.meishinote;
 
-import android.content.Context;
-import android.util.AtomicFile;
-import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 import org.json.*;
 
-// Two-way sync of people and media with a Drive folder. Protocol: docs/SYNC_SPEC.md.
-// Change detection uses content hashes against the last synced state (sync.json), so
-// clocks never decide who wins unless both sides changed the same person.
+// Shared sync rules: content hash, merge of concurrent edits and the decision table.
+// Used by VaultSync (docs/THETA_VAULT_SPEC.md) and by the sync-folder ZIP import.
 public final class Sync {
   // Device-specific fields: contact row ids differ per phone, queues are local work.
   static final String[] LOCAL = {
@@ -18,25 +14,6 @@ public final class Sync {
     "contactDuplicate", "suggestion", "contactUnlinked", "calendarEventId"
   };
   static final String DELETED = "deleted";
-  public static final String ROOT_NAME = "Theta Meishi Hatch データ"; // only for a new folder; found by marker
-
-  public static class Result {
-    int up, down, merged, deleted, mediaUp, mediaDown;
-    final List<String> errors = new ArrayList<>();
-
-    public String text() {
-      StringBuilder b = new StringBuilder("同期しました");
-      List<String> parts = new ArrayList<>();
-      if (down > 0) parts.add("受信 " + down + "人");
-      if (up > 0) parts.add("送信 " + up + "人");
-      if (merged > 0) parts.add("両方の変更を統合 " + merged + "人");
-      if (deleted > 0) parts.add("削除の反映 " + deleted + "人");
-      if (mediaUp + mediaDown > 0) parts.add("画像・録音 " + (mediaUp + mediaDown) + "件");
-      if (!parts.isEmpty()) b.append("（").append(String.join(" / ", parts)).append("）");
-      for (String e : errors) b.append("\n").append(e);
-      return b.toString();
-    }
-  }
 
   static JSONObject shared(JSONObject p) throws Exception {
     JSONObject s = new JSONObject(p.toString());
@@ -76,10 +53,20 @@ public final class Sync {
   static String hash(JSONObject p) throws Exception {
     JSONObject s = shared(p);
     s.remove("updated");
+    // Display-only details that the vault does not carry must not count as edits.
+    strip(s.optJSONArray("pages"), "name", "source");
+    strip(s.optJSONArray("sources"), "mime");
+    strip(s.optJSONArray("audio"), "id", "state");
+    JSONArray g = s.optJSONArray("greetings");
+    for (int i = 0; g != null && i < g.length(); i++) strip(g.getJSONObject(i).optJSONArray("files"), "name");
     byte[] d = MessageDigest.getInstance("SHA-256").digest(canonical(s).getBytes(StandardCharsets.UTF_8));
     StringBuilder b = new StringBuilder();
     for (int i = 0; i < 16; i++) b.append(String.format("%02x", d[i]));
     return b.toString();
+  }
+
+  static void strip(JSONArray a, String... keys) throws Exception {
+    for (int i = 0; a != null && i < a.length(); i++) for (String k : keys) a.getJSONObject(i).remove(k);
   }
 
   // Both sides changed: the newer edit wins field by field where it has a value; lists
@@ -149,140 +136,6 @@ public final class Sync {
     return "application/octet-stream";
   }
 
-  // ---- index of the last synced state ------------------------------------------------
-
-  static File indexFile(Store s) {
-    return new File(s.root, "sync.json");
-  }
-
-  static JSONObject loadIndex(Store s) {
-    try (InputStream in = new AtomicFile(indexFile(s)).openRead()) {
-      return new JSONObject(new String(Store.read(in, 32 * 1024 * 1024), StandardCharsets.UTF_8));
-    } catch (Exception e) {
-      return new JSONObject();
-    }
-  }
-
-  static void saveIndex(Store s, JSONObject index) throws Exception {
-    AtomicFile af = new AtomicFile(indexFile(s));
-    FileOutputStream out = af.startWrite();
-    try {
-      out.write(index.toString().getBytes(StandardCharsets.UTF_8));
-      af.finishWrite(out);
-    } catch (Exception e) {
-      af.failWrite(out);
-      throw e;
-    }
-  }
-
-  public static void forget(Store s) {
-    indexFile(s).delete();
-    new File(s.root, "sync.json.bak").delete();
-  }
-
-  // ---- the run ------------------------------------------------------------------------
-
-  public static Result run(Context c, Drive d, Pipeline.Progress progress) throws Exception {
-    Store s = Store.get(c);
-    Result res = new Result();
-    progress.update("Google Driveと同期中");
-    String root = d.markedFolder("root", "meishiRoot", ROOT_NAME);
-    String peopleDir = d.markedFolder(root, "meishiPeople", "people");
-    String mediaDir = d.markedFolder(root, "meishiMedia", "media");
-
-    Map<String, JSONObject> remote = new HashMap<>();
-    JSONArray files = d.listAll(Drive.q(peopleDir) + " in parents and trashed=false", "id,name,appProperties");
-    for (int i = 0; i < files.length(); i++) {
-      JSONObject f = files.getJSONObject(i);
-      JSONObject props = f.optJSONObject("appProperties");
-      String pid = props == null ? "" : props.optString("pid");
-      if (pid.isEmpty() && f.optString("name").endsWith(".json"))
-        pid = f.optString("name").substring(0, f.optString("name").length() - 5);
-      if (pid.isEmpty() || remote.containsKey(pid)) continue;
-      remote.put(pid, new JSONObject().put("f", f.getString("id")).put("h", props == null ? "" : props.optString("h")));
-    }
-    Map<String, String> remoteMedia = new HashMap<>();
-    JSONArray mf = d.listAll(Drive.q(mediaDir) + " in parents and trashed=false", "id,name");
-    for (int i = 0; i < mf.length(); i++) remoteMedia.put(mf.getJSONObject(i).getString("name"), mf.getJSONObject(i).getString("id"));
-
-    JSONObject index = loadIndex(s);
-    JSONObject known = index.optJSONObject("people");
-    if (known == null) index.put("people", known = new JSONObject());
-
-    Map<String, JSONObject> local = new HashMap<>();
-    JSONArray people = s.snapshot().getJSONArray("people");
-    for (int i = 0; i < people.length(); i++)
-      // A New Year card still waiting to be matched to a person is not a record yet.
-      if (!people.getJSONObject(i).optString("kind").equals("nengaInbox"))
-        local.put(people.getJSONObject(i).getString("id"), people.getJSONObject(i));
-    JSONObject tomb = s.tombstoneSnapshot();
-
-    Set<String> ids = new TreeSet<>(local.keySet());
-    ids.addAll(remote.keySet());
-    for (Iterator<String> it = tomb.keys(); it.hasNext(); ) ids.add(it.next());
-    int n = 0;
-    for (String id : ids) {
-      if (++n % 10 == 0) progress.update("Google Driveと同期中 " + n + " / " + ids.size());
-      try {
-        step(c, d, s, id, local.get(id), tomb.has(id) ? tomb.getLong(id) : -1, remote.get(id), known, peopleDir, mediaDir, remoteMedia, res);
-      } catch (Exception e) {
-        res.errors.add(id.substring(0, Math.min(8, id.length())) + ": " + e.getMessage());
-        String m = String.valueOf(e.getMessage());
-        if (m.contains("HTTP 401") || m.contains("HTTP 403")) break;
-      }
-      if (n % 20 == 0) saveIndex(s, index);
-    }
-    saveIndex(s, index);
-    return res;
-  }
-
-  static void step(
-      Context c, Drive d, Store s, String id, JSONObject L, long tombAt, JSONObject R, JSONObject known,
-      String peopleDir, String mediaDir, Map<String, String> remoteMedia, Result res) throws Exception {
-    if (L != null && tombAt >= 0) {
-      // Restored from a backup after deleting: the record on hand wins.
-      s.clearTombstone(id);
-      tombAt = -1;
-    }
-    String lh = L != null ? hash(L) : tombAt >= 0 ? DELETED : null;
-    String rh = R != null ? R.optString("h") : null;
-    String ih = known.has(id) ? known.getJSONObject(id).optString("h") : null;
-    String fileId = R != null ? R.getString("f") : "";
-    switch (decide(lh, rh, ih)) {
-      case SKIP:
-        return;
-      case SAME:
-        known.put(id, new JSONObject().put("h", lh).put("f", fileId));
-        if (lh.equals(DELETED)) s.clearTombstone(id);
-        return;
-      case FORGET_TOMBSTONE:
-        s.clearTombstone(id);
-        return;
-      case RECORD_REMOTE_DELETE:
-        known.put(id, new JSONObject().put("h", rh).put("f", fileId));
-        return;
-      case PUSH:
-        push(d, s, id, L, lh, fileId, peopleDir, mediaDir, remoteMedia, known, res);
-        return;
-      case PULL:
-        pull(c, d, s, id, lh.equals(DELETED) ? null : L, R, known, remoteMedia, res);
-        return;
-      case MERGE:
-        {
-          JSONObject theirs = new JSONObject(d.text(fileId));
-          JSONObject merged = merge(L, theirs);
-          fetchMedia(d, s, merged, remoteMedia, res);
-          JSONObject current = s.person(id);
-          if (!hash(current).equals(lh)) return; // edited during sync; next run picks it up
-          for (String k : LOCAL) if (current.has(k)) merged.put(k, current.get(k));
-          s.putSynced(merged);
-          push(d, s, id, merged, hash(merged), fileId, peopleDir, mediaDir, remoteMedia, known, res);
-          res.up--;
-          res.merged++;
-        }
-    }
-  }
-
   enum Action { SKIP, SAME, FORGET_TOMBSTONE, RECORD_REMOTE_DELETE, PUSH, PULL, MERGE }
 
   // lh/rh: hash of the local / remote record ("deleted" for a tombstone, null if absent);
@@ -298,74 +151,5 @@ public final class Sync {
     if (lh.equals(DELETED)) return Action.PULL; // an edit elsewhere beats a delete here
     if (rh.equals(DELETED)) return Action.PUSH; // and a local edit beats a delete elsewhere
     return Action.MERGE;
-  }
-
-  static void push(
-      Drive d, Store s, String id, JSONObject L, String lh, String fileId, String peopleDir, String mediaDir,
-      Map<String, String> remoteMedia, JSONObject known, Result res) throws Exception {
-    String body;
-    if (L == null || lh.equals(DELETED)) {
-      body = new JSONObject().put("id", id).put("deleted", true).put("updated", System.currentTimeMillis()).toString();
-    } else {
-      // Media first, so a device that sees the record can always fetch its files.
-      for (String name : media(L)) {
-        if (remoteMedia.containsKey(name)) continue;
-        File f = s.mediaFile(name);
-        if (!f.isFile()) continue;
-        remoteMedia.put(name, d.upload(mediaDir, name, mime(name), f));
-        res.mediaUp++;
-      }
-      body = shared(L).toString();
-    }
-    String f = d.putJson(fileId, peopleDir, id + ".json", new JSONObject().put("pid", id).put("h", lh), body);
-    known.put(id, new JSONObject().put("h", lh).put("f", f));
-    if (lh.equals(DELETED)) {
-      s.clearTombstone(id);
-      res.deleted++;
-    } else res.up++;
-  }
-
-  static void pull(
-      Context c, Drive d, Store s, String id, JSONObject L, JSONObject R, JSONObject known,
-      Map<String, String> remoteMedia, Result res) throws Exception {
-    String rh = R.optString("h");
-    if (rh.equals(DELETED)) {
-      if (L != null) {
-        JSONObject current = s.person(id);
-        if (!hash(current).equals(hash(L))) return;
-        // The Google contact this phone created stays: deleting contacts is never done implicitly.
-        s.removeQuietly(id);
-        s.clearTombstone(id);
-        res.deleted++;
-      }
-      known.put(id, new JSONObject().put("h", rh).put("f", R.getString("f")));
-      return;
-    }
-    JSONObject theirs = new JSONObject(d.text(R.getString("f")));
-    if (!id.equals(theirs.optString("id"))) throw new IOException("同期データのIDが一致しません");
-    fetchMedia(d, s, theirs, remoteMedia, res);
-    if (L != null) {
-      JSONObject current = s.person(id);
-      if (!hash(current).equals(hash(L))) return;
-      for (String k : LOCAL) if (current.has(k)) theirs.put(k, current.get(k));
-    }
-    s.putSynced(theirs);
-    known.put(id, new JSONObject().put("h", hash(theirs)).put("f", R.getString("f")));
-    res.down++;
-  }
-
-  static void fetchMedia(Drive d, Store s, JSONObject p, Map<String, String> remoteMedia, Result res) throws Exception {
-    for (String name : media(p)) {
-      File f = s.mediaFile(name);
-      if (f.isFile() || !remoteMedia.containsKey(name)) continue;
-      File part = new File(f.getPath() + ".part");
-      try {
-        d.download(remoteMedia.get(name), part);
-        if (!part.renameTo(f)) throw new IOException("画像を保存できません");
-        res.mediaDown++;
-      } finally {
-        part.delete();
-      }
-    }
   }
 }

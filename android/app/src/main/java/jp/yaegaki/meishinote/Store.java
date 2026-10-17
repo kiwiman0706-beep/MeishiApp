@@ -41,7 +41,16 @@ public final class Store {
   }
 
   private Store(Context c) throws Exception {
-    root = new File(c.getFilesDir(), "vault");
+    this(new File(c.getFilesDir(), "vault"));
+  }
+
+  // Separate instances over plain folders, for tests that play two devices.
+  static Store openForTest(File dir) throws Exception {
+    return new Store(dir);
+  }
+
+  private Store(File dir) throws Exception {
+    root = dir;
     media = new File(root, "media");
     media.mkdirs();
     AtomicFile f = new AtomicFile(new File(root, "data.json"));

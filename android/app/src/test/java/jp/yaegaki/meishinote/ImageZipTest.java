@@ -66,7 +66,7 @@ public class ImageZipTest {
   @Test
   public void realZipIfProvided() throws Exception {
     String path = System.getenv("REAL_ZIP");
-    if (path == null) return;
+    if (path == null || path.isEmpty()) return;
     Map<String, BulkImport.Card> g = groups(new File(path));
     int pages = 0, backs = 0, unnamed = 0;
     for (BulkImport.Card c : g.values()) {

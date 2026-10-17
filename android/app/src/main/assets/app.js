@@ -990,7 +990,7 @@ function nengaPage() {
 function syncStart() {
   if (
     confirm(
-      "Google Driveのマイドライブに「Theta Meishi Hatch データ」フォルダを作り、名刺・画像・メモ・録音を同期します。他の端末で同じGoogleアカウントの同期をオンにすると、データが共有されます。始めますか？",
+      "Google Driveのマイドライブに「Theta Vault」フォルダを作り、名刺を1人1つのMarkdown（Obsidianで開ける形式）と画像・録音で同期します。他の端末で同じGoogleアカウントの同期をオンにすると共有され、PCではObsidianで閲覧・編集できます。始めますか？",
     )
   )
     call("syncNow");
@@ -1024,8 +1024,8 @@ function menuPage() {
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
   ])}${section("同期", [
     state.syncEnabled
-      ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
-      : menuRow("cloud", "Google Driveで同期を始める", "スマホ・PCで名刺・画像・メモ・録音を共有", "syncStart()"),
+      ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "Theta Vault ・ 最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
+      : menuRow("cloud", "Google Driveで同期を始める", "Theta Vault（Obsidian形式）でスマホ・PCと共有", "syncStart()"),
     state.syncEnabled ? menuRow("close", "同期をやめる", "Drive上のデータは残ります", "if(confirm('同期をやめますか？Drive上のデータは削除されません。'))call('syncStop')") : "",
   ])}${section("書き出し・バックアップ", [
     menuRow("table", "一覧をCSVで書き出す", "Excelで開けるUTF-8 CSV", "call('export',{kind:'csv'})"),
@@ -1036,7 +1036,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch 0.9.1 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch 0.10.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

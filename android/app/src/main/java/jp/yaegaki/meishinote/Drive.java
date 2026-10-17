@@ -247,6 +247,75 @@ public final class Drive {
     return text;
   }
 
+  // Folder by its visible name (Vault folders may be created by people or other tools).
+  public String folderNamed(String parent, String name, boolean create) throws Exception {
+    JSONArray found =
+        listAll(
+            q(parent) + " in parents and mimeType=" + q(FOLDER) + " and trashed=false and name=" + q(name), "id,createdTime");
+    if (found.length() > 0) return found.getJSONObject(0).getString("id");
+    if (!create) return "";
+    return json(
+            "files?supportsAllDrives=true&fields=id",
+            "POST",
+            new JSONObject().put("name", name).put("mimeType", FOLDER).put("parents", new JSONArray().put(parent)))
+        .getString("id");
+  }
+
+  // Creates or replaces a small file (content + name, optionally moving folders) in one call.
+  // Returns the file's id, name and md5Checksum.
+  public JSONObject putFile(
+      String fileId, String parent, String name, String mime, byte[] body, String addParent, String removeParent)
+      throws Exception {
+    JSONObject meta = new JSONObject().put("name", name);
+    if (fileId.isEmpty()) meta.put("parents", new JSONArray().put(parent)).put("mimeType", mime);
+    String boundary = "theta" + java.util.UUID.randomUUID().toString().replace("-", "");
+    ByteArrayOutputStream payload = new ByteArrayOutputStream();
+    payload.write(("--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta + "\r\n--" + boundary + "\r\nContent-Type: " + mime + "\r\n\r\n").getBytes("UTF-8"));
+    payload.write(body);
+    payload.write(("\r\n--" + boundary + "--\r\n").getBytes("UTF-8"));
+    byte[] bytes = payload.toByteArray();
+    String query = "uploadType=multipart&supportsAllDrives=true&fields=" + Uri.encode("id,name,md5Checksum,modifiedTime");
+    if (!fileId.isEmpty() && !addParent.isEmpty())
+      query += "&addParents=" + Uri.encode(addParent) + "&removeParents=" + Uri.encode(removeParent);
+    HttpURLConnection con =
+        (HttpURLConnection)
+            new URL("https://www.googleapis.com/upload/drive/v3/files" + (fileId.isEmpty() ? "" : "/" + Uri.encode(fileId)) + "?" + query)
+                .openConnection();
+    con.setConnectTimeout(20000);
+    con.setReadTimeout(120000);
+    con.setRequestProperty("Authorization", "Bearer " + token);
+    con.setRequestMethod("POST");
+    if (!fileId.isEmpty()) con.setRequestProperty("X-HTTP-Method-Override", "PATCH");
+    con.setRequestProperty("Content-Type", "multipart/related; boundary=" + boundary);
+    con.setDoOutput(true);
+    con.setFixedLengthStreamingMode(bytes.length);
+    try {
+      try (OutputStream out = con.getOutputStream()) {
+        out.write(bytes);
+      }
+      return new JSONObject(readBody(con));
+    } finally {
+      con.disconnect();
+    }
+  }
+
+  // A file's current state by id, or null if it no longer exists.
+  public JSONObject meta(String fileId) throws Exception {
+    try {
+      return json(
+          "files/" + Uri.encode(fileId) + "?supportsAllDrives=true&fields=" + Uri.encode("id,name,md5Checksum,modifiedTime,parents,trashed"),
+          "GET",
+          null);
+    } catch (IOException e) {
+      if (String.valueOf(e.getMessage()).contains("HTTP 404")) return null;
+      throw e;
+    }
+  }
+
+  public void trashTo(String fileId, String from, String trashFolder) throws Exception {
+    move(fileId, from, trashFolder);
+  }
+
   public JSONArray folders(String parent) throws Exception {
     return list(
         q(parent) + " in parents and mimeType=" + q(FOLDER) + " and trashed=false", "name");

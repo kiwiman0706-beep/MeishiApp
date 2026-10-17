@@ -889,7 +889,7 @@ public class MainActivity extends Activity {
         break;
       case "syncStop":
         prefs().edit().putBoolean("syncEnabled", false).apply();
-        Sync.forget(store);
+        VaultSync.forget(store);
         refresh();
         event("toast", "同期を停止しました。Drive上のデータはそのまま残ります");
         break;

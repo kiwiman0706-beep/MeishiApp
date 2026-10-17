@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.10.0での変更（Theta Vault）
+
+- `VaultCodec`：人物レコード ⇄ Markdown。frontmatterは snakeyaml-engine で読み書き。管理外のfrontmatter項目は `vaultExtra`、管理外の本文は `vaultFree` に保持して書き戻す。メモは `^id`（Obsidianのブロック参照）で同一性を保つ。`rev` は本文の指紋で、`editedOutside` が真ならObsidian等での編集と判断。
+- `VaultSync`：`VaultRemote`（今は `OnDrive`）越しに同期。リモート状態を Drive md5 と端末の記録（`vault-sync.json`）で `Sync.decide` の語彙に写して判定。リモートに無い既知ノートは `meta` で所在確認（サブフォルダ移動に対応）、多数欠落時は削除しない。手書きノートは `vaultNewId` で検出してidを書き戻す。
+- `Sync` は共通ルール（hash・merge・decide・media）だけに縮小。hashは表示用の細部（ページ名・音声のstate等）を除外。
+- テスト：`VaultCodecTest`（往復・Obsidian編集・手書きノート）、`VaultSyncTest`（Robolectricで2台の端末＋仮のVault：送受信・統合・削除・移動・大量欠落・改名・Obsidian優先）。Robolectricの実行時jarは `ROBOLECTRIC_REPO` で取得先を指定できる。
+
 ## 0.9.0での変更
 
 - 年賀状：撮影・取り込み時に `nenga:true, year` を付けると、新しいレコードは `kind:"nengaInbox"` になり、キュー工程 `nenga` で `Gemini.recognizeNenga` → `Nenga.file`。差出人の氏名（連名のどれか）が一意に一致、同名が複数なら住所で絞り込み、氏名なしなら住所の一致で既存の人へ `greetings[]` として追加し、仮レコードは削除（画像は先に移すので消えない）。一致しなければ仮レコードを人に変換（`noAutoContact`、タグ「年賀状」）。`nengaInbox` は一覧・重複・同期・CSVの対象外。年の既定は10月以降なら翌年（`Nenga.season`）。

@@ -1,4 +1,11 @@
-# Theta Meishi Hatch 0.9.1（旧 Meishi-Claude）
+# Theta Meishi Hatch 0.10.0（旧 Meishi-Claude）
+
+## 0.10.0の変更点
+
+- **同期をObsidian Vault形式（Theta Vault）に変更**。Google Driveのマイドライブに「Theta Vault」を作り、1人1つのMarkdown（`Meishi/People/氏名（会社）.md`、お店は `Meishi/Shops/`）と添付ファイル（`Meishi/_files/`）で保存。PCでGoogleドライブのフォルダをObsidianの保管庫として開けば、名刺画像つきで閲覧・編集でき、Obsidianでの編集（項目・メモ・自由記述・新しいノート）はアプリに取り込まれる。仕様は `../docs/THETA_VAULT_SPEC.md`。
+- 削除の安全策：Obsidianでサブフォルダへ移したノートは削除扱いにしない。多数のノートが一度に消えたように見える時は端末側を削除しない。削除はVault内のゴミ箱（`.theta/trash`）へ移動。
+- 旧同期フォルダは使わなくなる（削除はしない）。データは端末からそのままVaultへ送られる。
+
 
 ## 0.9.1の変更点
 

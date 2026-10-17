@@ -100,7 +100,7 @@ public class ProcessingService extends Service {
     syncRequested = false;
     android.content.SharedPreferences prefs = getSharedPreferences("prefs", 0);
     try {
-      Sync.Result r = Sync.run(this, new Drive(DriveAuth.silentToken(this)), this::progress);
+      VaultSync.Result r = VaultSync.run(this, new Drive(DriveAuth.silentToken(this)), this::progress);
       prefs.edit().putLong("lastSync", System.currentTimeMillis()).remove("syncError").apply();
       // Quiet when nothing moved; a notification per routine sync would be noise.
       if (r.up + r.down + r.merged + r.deleted > 0 || !r.errors.isEmpty())

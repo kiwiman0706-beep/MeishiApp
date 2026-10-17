@@ -1,4 +1,7 @@
-# Google Drive同期 仕様 v1
+# 旧同期形式（0.6〜0.9）とZIP取り込み形式
+
+> **0.10.0以降の同期は `THETA_VAULT_SPEC.md`（Obsidian Vault形式）です。** この文書は、0.6〜0.9で使っていたDrive同期の記録と、今も使える「同期形式のZIP取り込み」（`people/*.json` + `media/`）の仕様として残しています。
+
 
 Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイン）も同じ仕様で実装する。
 
