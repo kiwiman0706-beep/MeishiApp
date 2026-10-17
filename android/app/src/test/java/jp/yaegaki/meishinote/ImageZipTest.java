@@ -77,4 +77,15 @@ public class ImageZipTest {
     }
     System.out.println("REAL_ZIP people=" + g.size() + " pages=" + pages + " withBack=" + backs + " unnamed=" + unnamed);
   }
+
+  @Test
+  public void syncFolderRecordsAreRecognised() {
+    String re = "(?i)(.*/)?people/[^/]+\\.json";
+    assertTrue("people/abc.json".matches(re));
+    assertTrue("Theta Meishi Hatch データ/people/abc-1.json".matches(re));
+    assertTrue("export/People/x.JSON".matches(re));
+    assertFalse("cards.csv".matches(re));
+    assertFalse("people/sub/x.json".matches(re));
+    assertFalse("media/x.json.jpg".matches(re));
+  }
 }

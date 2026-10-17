@@ -836,7 +836,7 @@ function bulkSheet() {
 }
 function importZipSheet() {
   modal(
-    `<h2>${icon("download")} ZIPから一括取り込み</h2><p class="caption">名刺画像をまとめたZIPを読み込み、1人ずつに分けて保存します。読み取りはバックグラウンドのGeminiが行うので、終わるまで他の操作をしていて大丈夫です。</p><div class="tip"><b>画像だけのZIP</b><div class="step"><b>・</b><span>Eightの画像（<code>交換日_氏名_会社_ID.jpg</code>、裏は末尾<code>_裏</code>）は表裏を自動でまとめ、氏名・会社・交換日も入れます。</span></div><div class="step"><b>・</b><span><code>001_1.jpg</code>／<code>001_2.jpg</code>、<code>_表</code>／<code>_裏</code> の組も1人にまとめます。それ以外は1枚 = 1人。</span></div><b>CSV付きZIP</b>：CSVの項目と画像をそのまま登録します（仕様：docs/IMPORT_SPEC.md）。</div><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後にGoogle連絡先へ登録</b><small>Eight等から既に連絡先へ入っているならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。読み取りの費用の目安は1人1円以下です。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
+    `<h2>${icon("download")} ZIPから一括取り込み</h2><p class="caption">名刺画像をまとめたZIPを読み込み、1人ずつに分けて保存します。読み取りはバックグラウンドのGeminiが行うので、終わるまで他の操作をしていて大丈夫です。</p><div class="tip"><b>画像だけのZIP</b><div class="step"><b>・</b><span>Eightの画像（<code>交換日_氏名_会社_ID.jpg</code>、裏は末尾<code>_裏</code>）は表裏を自動でまとめ、氏名・会社・交換日も入れます。</span></div><div class="step"><b>・</b><span><code>001_1.jpg</code>／<code>001_2.jpg</code>、<code>_表</code>／<code>_裏</code> の組も1人にまとめます。それ以外は1枚 = 1人。</span></div><b>CSV付きZIP</b>：CSVの項目と画像をそのまま登録します（仕様：docs/IMPORT_SPEC.md）。<br><b>同期形式のZIP</b>：<code>people/</code>（1人1つのJSON）と <code>media/</code> の組をそのまま登録します（仕様：docs/SYNC_SPEC.md）。</div><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後にGoogle連絡先へ登録</b><small>Eight等から既に連絡先へ入っているならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。読み取りの費用の目安は1人1円以下です。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
   );
 }
 function syncStart() {
@@ -886,7 +886,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch 0.8.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch 0.8.1 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

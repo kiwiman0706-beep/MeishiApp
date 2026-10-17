@@ -72,6 +72,69 @@ Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイ
 - アプリを離れる時（前回の同期以降に端末で変更があれば）
 - バックグラウンド処理で名刺を読み取り・登録した後
 
+## ZIPで取り込む（同期形式のZIP）
+
+この構成を外部で作った場合（他のツールやAIで生成した場合など）は、**ZIPにしてアプリの「メニュー → ZIPから一括取り込み」で読み込みます**。DriveのWeb画面からフォルダへ直接アップロードする方法は使いません（フォルダとファイルに必要な目印〔appProperties〕が付かないため）。
+
+```
+任意の名前.zip
+├── people/
+│   ├── <ID>.json
+│   └── ...
+└── media/
+    ├── <ファイル名>
+    └── ...
+```
+
+- `people/` と `media/` はZIPの最上位でも、1つ下のフォルダ（例：`Theta Meishi Hatch データ/people/`）でも構いません。
+- 取り込むと、そのまま端末に保存されます（Geminiの読み取り・連絡先の自動登録はしません）。同期がオンなら、次の同期でDriveにも送られます。
+- 端末に既にあるIDは読み飛ばします（上書きしません）。`"deleted": true` のファイルも読み飛ばします。
+
+### 1人分のJSONの最低限の形
+
+```json
+{
+  "id": "c0001",
+  "name": "山田 太郎",
+  "kana": "やまだ たろう",
+  "company": "サンプル株式会社",
+  "department": "営業部",
+  "title": "部長",
+  "email": "taro@example.com",
+  "phone": "03-1234-5678",
+  "mobile": "090-1234-5678",
+  "fax": "",
+  "postal": "100-0001",
+  "address": "東京都千代田区丸の内1-1-1",
+  "website": "",
+  "tags": "取引先",
+  "metDate": "2024-03-05",
+  "metPlace": "展示会",
+  "status": "confirmed",
+  "created": 1709596800000,
+  "pages": [
+    {"file": "c0001-front.jpg", "name": "表面"},
+    {"file": "c0001-back.jpg", "name": "裏面"}
+  ],
+  "notes": [
+    {"id": "n1", "time": 1709596800000, "text": "次回見積もり送付"}
+  ]
+}
+```
+
+| 項目 | 規則 |
+| --- | --- |
+| `id` | 必須。英数字・`_`・`-`、80文字以内。ファイル名 `people/<id>.json` と同じにする |
+| 名刺の項目 | `name` `kana` `company` `department` `title` `email` `phone` `mobile` `fax` `postal` `address` `website` `tags` `metDate`（YYYY-MM-DD）`metPlace`。省略時は空 |
+| `status` | `confirmed`（確認済み）/ `review`（要確認）/ `new`（未認識）。省略時は氏名があれば `confirmed` |
+| `created` / `updated` | ミリ秒のUNIX時刻。省略時は取り込んだ時刻 |
+| `pages` | 名刺画像。`file` は `media/` 内のファイル名（英数字・`_`・`-`・`.` のみ）。表→裏の順 |
+| `notes` | メモ。`id`（重複しない文字列）・`time`（ミリ秒）・`text` |
+| `audio` `sources` `portrait` `logo` | 任意。`file` は `media/` 内のファイル名 |
+| `geo` | 任意。`{"lat": 緯度, "lng": 経度, "q": 住所と同じ文字列}` があれば地図の変換を省略 |
+
+`media/` に無いファイルを参照している場合、その画像だけ表示されず、取り込み結果にエラーとして出ます。
+
 ## 既知の制限
 
 - Drive上の不要になったmediaファイルは消さない（容量は増える一方）。

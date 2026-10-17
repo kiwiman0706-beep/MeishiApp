@@ -141,7 +141,7 @@ public final class BulkImport {
         // Entries by normalised path, so a CSV saying "images\\a.jpg" or "Images/A.JPG" still resolves.
         Map<String, ZipEntry> entries = new HashMap<>();
         ZipEntry table = null;
-        List<ZipEntry> pictures = new ArrayList<>();
+        List<ZipEntry> pictures = new ArrayList<>(), records = new ArrayList<>();
         int count = 0;
         for (Enumeration<? extends ZipEntry> e = z.entries(); e.hasMoreElements(); ) {
           ZipEntry en = e.nextElement();
@@ -150,10 +150,13 @@ public final class BulkImport {
           String path = en.getName().replace('\\', '/');
           if (path.startsWith("__MACOSX/")) continue;
           entries.put(path.toLowerCase(Locale.ROOT), en);
+          if (path.matches("(?i)(.*/)?people/[^/]+\\.json")) records.add(en);
           if (path.toLowerCase(Locale.ROOT).matches(".*\\.(jpe?g|png|webp|heic|heif|pdf)$")) pictures.add(en);
           if (path.toLowerCase(Locale.ROOT).endsWith(".csv")
               && (table == null || path.toLowerCase(Locale.ROOT).endsWith("cards.csv"))) table = en;
         }
+        // A copy of the sync folder (docs/SYNC_SPEC.md): people/<id>.json + media/<file>.
+        if (!records.isEmpty()) return syncFolder(c, store, z, records, entries, progress);
         if (table == null) {
           if (pictures.isEmpty()) throw new IOException("ZIPの中にCSVも名刺画像も見つかりません");
           return images(c, store, z, pictures, toContacts, progress);
@@ -406,6 +409,86 @@ public final class BulkImport {
         .put("skipped", skipped)
         .put("images", images)
         .put("queued", recognize.size())
+        .put("errors", errors);
+  }
+
+  // Records in the sync format go in as they are (no Gemini, no contact registration).
+  // Ids already on the phone are left alone so a re-import never overwrites edits.
+  static JSONObject syncFolder(
+      Context c, Store store, ZipFile z, List<ZipEntry> records, Map<String, ZipEntry> entries, Pipeline.Progress progress)
+      throws Exception {
+    Set<String> have = new HashSet<>();
+    JSONArray people = store.snapshot().getJSONArray("people");
+    for (int i = 0; i < people.length(); i++) have.add(people.getJSONObject(i).getString("id"));
+    // Media lookup: "<base>/media/<name>" next to the people folder, else any entry with that file name.
+    Map<String, ZipEntry> byName = new HashMap<>();
+    for (ZipEntry en : entries.values()) {
+      String n = en.getName().replace('\\', '/');
+      byName.putIfAbsent(n.substring(n.lastIndexOf('/') + 1), en);
+    }
+    JSONArray errors = new JSONArray();
+    int added = 0, skipped = 0, files = 0, n = 0;
+    for (ZipEntry en : records) {
+      String path = en.getName().replace('\\', '/');
+      progress.update("取り込み中 " + (++n) + " / " + records.size());
+      try {
+        JSONObject p;
+        try (InputStream in = z.getInputStream(en)) {
+          p = new JSONObject(decode(Store.read(in, 8 * 1024 * 1024)));
+        }
+        if (p.optBoolean("deleted")) continue;
+        String id = p.optString("id");
+        if (!id.matches("[A-Za-z0-9_-]{1,80}")) throw new IOException("idが不正です");
+        if (have.contains(id)) {
+          skipped++;
+          continue;
+        }
+        // Fill anything the generator left out, and drop phone-specific fields.
+        JSONObject base = Store.empty();
+        for (Iterator<String> it = base.keys(); it.hasNext(); ) {
+          String k = it.next();
+          if (!p.has(k) || p.isNull(k)) p.put(k, base.get(k));
+        }
+        for (String k : Sync.LOCAL) p.remove(k);
+        p.put("id", id);
+        if (!Arrays.asList("new", "review", "confirmed").contains(p.optString("status")))
+          p.put("status", p.optString("name").isEmpty() ? "new" : "confirmed");
+        if (!p.has("created") || p.optLong("created") <= 0) p.put("created", System.currentTimeMillis());
+        if (!p.has("updated") || p.optLong("updated") <= 0) p.put("updated", p.getLong("created"));
+        String dir = path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : "";
+        String root = dir.contains("/") ? dir.substring(0, dir.lastIndexOf('/') + 1) : "";
+        for (String name : Sync.media(p)) {
+          File target = store.mediaFile(name); // also rejects unsafe names
+          if (target.isFile()) continue;
+          ZipEntry m = entries.get((root + "media/" + name).toLowerCase(Locale.ROOT));
+          if (m == null) m = byName.get(name);
+          if (m == null) {
+            errors.put(p.optString("name", id) + "：ファイルがありません（" + name + "）");
+            continue;
+          }
+          File part = new File(target.getPath() + ".part");
+          try (InputStream in = z.getInputStream(m);
+              OutputStream out = new FileOutputStream(part)) {
+            Store.copy(in, out, 1024L * 1024 * 1024);
+          }
+          if (!part.renameTo(target)) {
+            part.delete();
+            throw new IOException("ファイルを保存できません");
+          }
+          files++;
+        }
+        store.putSynced(p);
+        have.add(id);
+        added++;
+      } catch (Exception e) {
+        errors.put(path + "：" + e.getMessage());
+      }
+    }
+    return new JSONObject()
+        .put("added", added)
+        .put("skipped", skipped)
+        .put("images", files)
+        .put("queued", 0)
         .put("errors", errors);
   }
 
