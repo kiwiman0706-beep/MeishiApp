@@ -470,6 +470,12 @@ const p = (id, name, company, status = "confirmed") => ({
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "kanaFill" });
   await page.evaluate(() => go("home"));
+  // A newer release: banner on the home screen.
+  await page.evaluate((d) => onNative({ type: "state", data: { ...d, version: "0.14.0", update: { version: "0.15.0", url: "https://github.com/x.apk", ready: false } } }), demo);
+  await page.getByRole("button", { name: /新しい版 0\.15\.0/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "installUpdate" });
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
   // HTML injection in content must be rendered as text.
   demo.people[0].name = '<img src=x onerror="window.pwned=true">';
   demo.people[0].notes[0].text = "<script>window.pwned=true</script>";

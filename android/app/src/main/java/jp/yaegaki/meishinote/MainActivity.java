@@ -181,6 +181,9 @@ public class MainActivity extends Activity {
     else registerReceiver(receiver, f);
     recheckContactDups();
     refreshContactNames();
+    io.execute(() -> {
+      if (UpdateCheck.run(this, versionName())) refresh();
+    });
   }
 
   // Once: rewrite this app's contacts with family / given names and their readings
@@ -209,6 +212,14 @@ public class MainActivity extends Activity {
 
   // Once per rule change: re-judge the "already in Google Contacts" notices with the current rule
   // (office numbers alone no longer count), dropping the ones that were only colleagues.
+  String versionName() {
+    try {
+      return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+    } catch (Exception e) {
+      return "0";
+    }
+  }
+
   static boolean needsKana(JSONObject p) {
     return !p.optString("name").trim().isEmpty()
         && p.optString("kana").trim().isEmpty()
@@ -331,6 +342,9 @@ public class MainActivity extends Activity {
       JSONArray everyone = state.getJSONArray("people");
       for (int i = 0; i < everyone.length(); i++) if (needsKana(everyone.getJSONObject(i))) kana++;
       state.put("kanaMissing", kana);
+      state.put("version", versionName());
+      JSONObject update = UpdateCheck.pending(this, versionName());
+      if (update != null) state.put("update", update);
       state
           .put("keySet", getSharedPreferences("prefs", 0).contains("key"))
           .put("model", getSharedPreferences("prefs", 0).getString("model", "gemini-2.5-flash"))
@@ -1242,6 +1256,16 @@ public class MainActivity extends Activity {
           refresh();
           startProcessing();
           event("toast", ids.size() + "件の読み仮名を補います（バックグラウンド）");
+          break;
+        }
+      case "installUpdate":
+        {
+          JSONObject u = UpdateCheck.pending(this, versionName());
+          String link = u == null ? "" : u.optString("url");
+          // Only the project's own release downloads are opened.
+          if (!link.startsWith("https://github.com/kiwiman0706-beep/MeishiApp/releases/download/"))
+            link = "https://github.com/kiwiman0706-beep/MeishiApp/releases/latest";
+          startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link)));
           break;
         }
       case "pinWidget":

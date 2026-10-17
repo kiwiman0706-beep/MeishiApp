@@ -56,7 +56,7 @@ function req(port, p, { method = "GET", headers = {}, body } = {}) {
   // THETA_APP: a packaged executable (e.g. dist/linux-unpacked/theta-meishi-hatch) instead of the source tree.
   const [cmd, ...args] = process.env.THETA_APP ? [process.env.THETA_APP] : [require("electron"), path.join(__dirname, "../..")];
   const child = spawn(cmd, [...args, "--hidden", "--no-sandbox"], {
-    env: { ...process.env, THETA_USER_DATA: userData, THETA_VAULT: vault },
+    env: { ...process.env, THETA_USER_DATA: userData, THETA_VAULT: vault, THETA_NO_UPDATE: process.env.THETA_NO_UPDATE ?? "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";

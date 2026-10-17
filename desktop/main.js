@@ -1,7 +1,7 @@
 // Theta Meishi Hatch for Windows / Mac. Lives in the tray, serves the shared UI on 127.0.0.1
 // (the app window and DeskHatch drawers both use it), and keeps the Theta Vault folder as its data.
 "use strict";
-const { app, BrowserWindow, Tray, Menu, dialog, shell, nativeImage, safeStorage, clipboard, ipcMain } = require("electron");
+const { app, BrowserWindow, Tray, Menu, Notification, dialog, shell, nativeImage, safeStorage, clipboard, ipcMain } = require("electron");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -137,6 +137,35 @@ function imaging(base) {
   };
 }
 
+// ---- updates (GitHub Releases) ----------------------------------------------------------
+// Windows downloads in the background and installs on restart. The Mac build is not signed by
+// Apple, which Squirrel.Mac requires, so there the app only points to the new download.
+const RELEASES = "https://github.com/kiwiman0706-beep/MeishiApp/releases/latest";
+let update = null, // { version, ready }
+  onUpdate = () => {};
+function setupUpdates() {
+  if (!app.isPackaged || process.env.THETA_NO_UPDATE) return;
+  const { autoUpdater } = require("electron-updater");
+  autoUpdater.autoDownload = process.platform === "win32";
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("update-available", (i) => {
+    update = { version: i.version, ready: false };
+    onUpdate();
+    if (process.platform !== "win32" && Notification.isSupported())
+      new Notification({ title: "Theta Meishi Hatch", body: `新しい版 ${i.version} があります。トレイのメニューからダウンロードできます。` }).show();
+  });
+  autoUpdater.on("update-downloaded", (i) => {
+    update = { version: i.version, ready: true };
+    onUpdate();
+    if (Notification.isSupported()) new Notification({ title: "Theta Meishi Hatch", body: `新しい版 ${i.version} の準備ができました。次の起動時に更新されます。` }).show();
+  });
+  autoUpdater.on("error", (e) => console.warn("update check:", e.message));
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  setTimeout(check, 15000);
+  setInterval(check, 6 * 3600 * 1000);
+  return { check, install: () => (update?.ready ? ((app.isQuitting = true), autoUpdater.quitAndInstall()) : shell.openExternal(RELEASES)) };
+}
+
 // ---- app ------------------------------------------------------------------------------
 let win = null, tray = null, url = "";
 function show() {
@@ -192,7 +221,9 @@ app.whenReady().then(async () => {
     openPath: (f) => shell.openPath(f),
     showInFolder: (f) => shell.showItemInFolder(f),
   };
-  const backend = new Backend({ store, settings, secrets, services });
+  const updater = setupUpdates();
+  services.installUpdate = () => (updater ? updater.install() : shell.openExternal(RELEASES));
+  const backend = new Backend({ store, settings, secrets, services, info: () => ({ update, version: app.getVersion() }) });
   backend.on((msg) => {
     if (msg.type === "error" || msg.type === "report") console.error(msg.data);
     if (msg.type === "imported" && msg.data.errors.length) console.error(msg.data.errors.join("\n"));
@@ -223,16 +254,26 @@ app.whenReady().then(async () => {
   const icon = nativeImage.createFromPath(path.join(__dirname, "assets", "tray.png"));
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip("Theta Meishi Hatch");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "開く", click: show },
-      { label: "DeskHatch用のURLをコピー", click: () => clipboard.writeText(url) },
-      { label: "Theta Vault フォルダを開く", click: () => shell.openPath(vault) },
-      { type: "separator" },
-      { label: "ログイン時に起動", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (m) => app.setLoginItemSettings({ openAtLogin: m.checked, args: ["--hidden"] }) },
-      { label: "終了", click: () => ((app.isQuitting = true), app.quit()) },
-    ]),
-  );
+  const menu = () =>
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        ...(update
+          ? [{ label: update.ready ? `再起動して ${update.version} に更新` : `新しい版 ${update.version} をダウンロード`, click: () => services.installUpdate() }, { type: "separator" }]
+          : []),
+        { label: "開く", click: show },
+        { label: "DeskHatch用のURLをコピー", click: () => clipboard.writeText(url) },
+        { label: "Theta Vault フォルダを開く", click: () => shell.openPath(vault) },
+        { type: "separator" },
+        { label: "ログイン時に起動", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin, click: (m) => app.setLoginItemSettings({ openAtLogin: m.checked, args: ["--hidden"] }) },
+        ...(updater ? [{ label: `更新を確認（${app.getVersion()}）`, click: () => updater.check() }] : []),
+        { label: "終了", click: () => ((app.isQuitting = true), app.quit()) },
+      ]),
+    );
+  menu();
+  onUpdate = () => {
+    menu();
+    backend.refresh();
+  };
   tray.on("click", show);
   console.log("serving " + base);
   if (!process.argv.includes("--hidden")) show();

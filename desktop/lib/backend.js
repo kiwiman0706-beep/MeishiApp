@@ -15,7 +15,8 @@ const CAPS = ["pick", "folder", "gemini", "vault", "map", "export", "nenga", "at
 const NOT_HERE = "この操作はスマホ版（Android）で行えます";
 
 class Backend {
-  constructor({ store, settings, secrets, services, fetchImpl }) {
+  constructor({ store, settings, secrets, services, fetchImpl, info }) {
+    this.info = info || (() => ({}));
     this.store = store;
     this.settings = settings; // { get(k, d), set(obj) }
     this.secrets = secrets; // { get(), set(v) }
@@ -54,6 +55,7 @@ class Backend {
       vaultWarnings: this.store.warnings,
       processing: this.processing,
       lastReport: s.get("lastReport", ""),
+      ...this.info(), // app version and a pending update (main.js)
     };
   }
   refresh() {
@@ -298,6 +300,8 @@ class Backend {
       case "mapOpen":
         this.settings.set({ geoEnabled: true });
         return this.geocode();
+      case "installUpdate":
+        return this.svc.installUpdate && this.svc.installUpdate();
       case "chooseVault": {
         const dir = await this.svc.openFolder("Theta Vault のフォルダ（Googleドライブの「Theta Vault」など）");
         if (dir) this.event("chooseVault", dir);

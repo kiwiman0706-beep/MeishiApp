@@ -335,6 +335,10 @@ function home() {
   const busyNow = state.processing || queued
     ? `<div class="procbar"><i class="spin"></i><span>${esc(state.processing || "処理待ち")}${queued ? `<small>残り ${queued}件 ・ 撮影はそのまま続けられます</small>` : ""}</span></div>`
     : "";
+  const upd = state.update;
+  const updateBanner = upd
+    ? `<button class="setup drive" onclick="call('installUpdate')">${icon("download")}<span><b>新しい版 ${esc(upd.version)}</b><small>${upd.ready ? "押すと再起動して更新します" : state.platform === "desktop" ? "ダウンロードページを開きます" : "押すとブラウザでAPKをダウンロードします。終わったら開いてインストール"}</small></span>${icon("next")}</button>`
+    : "";
   const dupCount = dupes().length;
   const dupBanner = dupCount
     ? `<button class="setup" onclick="dupSheet()">${icon("link")}<span><b>重複の可能性 ${dupCount}件</b><small>統合・削除するか、別人として扱えます</small></span>${icon("next")}</button>`
@@ -348,7 +352,7 @@ function home() {
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${updateBanner}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
     ["cards", "リスト", "list"],
     ["table", "表", "table"],
     ["calendar", "カレンダー", "clock"],
@@ -1228,7 +1232,7 @@ function menuPage() {
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.13.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch ${state.version ? esc(state.version) + " ・ " : ""}${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

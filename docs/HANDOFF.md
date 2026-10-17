@@ -1,5 +1,11 @@
 # 開発引き継ぎ
 
+## 0.14.0での変更（GitHubリリース・自動更新）
+
+- 版はAndroid・デスクトップで共通（0.14.0から）。タグ `v<版>` を送ると `.github/workflows/release.yml` がテスト→APK・Windowsインストーラー（NSIS、ユーザー単位）・Mac dmg/zip を作りReleaseを公開。手順と署名Secretは `docs/RELEASING.md`。
+- デスクトップ：`electron-updater`（GitHub provider）。Windowsは自動ダウンロード→終了時に更新、Macは通知のみ（Apple署名が無いため）。Macは `scripts/after-pack.js` でアドホック署名。状態の `update`/`version` をUIへ（`Backend` の `info`）、`installUpdate` で更新。
+- Android：`UpdateCheck` が起動時（12時間に1回まで）に最新ReleaseのAPKを確認、`state.update` でホームにお知らせ、`installUpdate` でブラウザからAPKをダウンロード（このリポジトリのReleaseのURLだけ開く）。
+
 ## 0.13.0での変更（読み仮名・ウィジェット）
 
 - 連絡先の氏名：`Contacts.name` で表示名に加えて姓・名（日本語は「姓 名」、漢字・かなを含まなければ「名 姓」）と読みの姓・名（`PHONETIC_FAMILY/GIVEN_NAME`、`PhoneticNameStyle.JAPANESE`）を書く。以前は読み全体を `PHONETIC_GIVEN_NAME` だけに入れていた。起動時に1回、登録済みの連絡先をこの形で書き直す（`contactNameRule`=1、キュー工程 `contact`）。統合済み（`contactMerged`）の連絡先は、読みが空のときだけ読みを足す。

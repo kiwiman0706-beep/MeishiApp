@@ -10,15 +10,12 @@
    - Windows：`winget install Google.GoogleDrive`
    - Mac：`brew install --cask google-drive`
 2. スマホ版でメニュー →「今すぐ同期」を一度行い、マイドライブに `Theta Vault` フォルダを作っておきます。
-3. 配布ZIPを展開して起動します。
-   - **Windows**：`Theta Meishi Hatch-<版>-win.zip` を好きな場所に展開し `Theta Meishi Hatch.exe` を起動。
-     署名していないため SmartScreen が出たら「詳細情報」→「実行」。
-   - **Mac**：Apple シリコンは `…-arm64-mac.zip`、Intel は `…-mac.zip`。展開した `.app` を「アプリケーション」に入れ、
-     署名していないため初回だけターミナルで次を実行します。
-     ```sh
-     xattr -cr "/Applications/Theta Meishi Hatch.app"
-     codesign --force --deep --sign - "/Applications/Theta Meishi Hatch.app"
-     ```
+3. [Releases](https://github.com/kiwiman0706-beep/MeishiApp/releases/latest) から入れます。
+   - **Windows**：`ThetaMeishiHatch-Setup-<版>.exe` を実行（管理者権限は不要）。署名していないため SmartScreen が出たら「詳細情報」→「実行」。
+     以後の更新は自動です（バックグラウンドでダウンロードし、次の起動で入れ替え）。
+   - **Mac**：Apple シリコンは `…-mac-arm64.dmg`、Intel は `…-mac-x64.dmg`。`.app` を「アプリケーション」に入れ、
+     初回だけ右クリック →「開く」（macOS 15以降は「システム設定」→「プライバシーとセキュリティ」→「このまま開く」）。
+     新しい版が出ると通知とトレイのメニューで知らせ、ダウンロードページを開きます（Appleの開発者署名が無いため自動入れ替えはできません）。
 4. 初回起動時、`マイドライブ/Theta Vault` を自動で探します（Windows は G:〜Z: ドライブ、Mac は `~/Library/CloudStorage/GoogleDrive-*`）。
    見つからなければフォルダを選ぶか、書類フォルダに新しく作れます。あとからメニュー →「Theta Vault フォルダ」で変更できます。
 
@@ -58,8 +55,8 @@ npm install
 npm start            # android/ の共通UIを ui/ に取り込んで起動
 npm test             # Vault読み書き・取り込み・HTTPブリッジのテスト
 npm run test:e2e     # 画面（Playwright）と、実際のElectronでPDF取り込み（Linuxは xvfb-run -a を前に付ける）
-npm run dist:win     # dist/ に Windows 用ZIP
-npm run dist:mac     # dist/ に Mac 用ZIP（arm64 / x64）
+npm run dist:win     # dist/ に Windows インストーラーとZIP（Windowsで実行。LinuxではWineが必要）
+npm run dist:mac     # dist/ に Mac 用 dmg / zip（arm64 / x64。Macで実行）
 ```
 
 | ファイル | 役割 |
