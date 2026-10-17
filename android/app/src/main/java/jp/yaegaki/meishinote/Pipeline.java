@@ -74,7 +74,7 @@ public final class Pipeline {
   }
 
   public static class Summary {
-    int read, registered, updated, failed, review, nenga, logos, noLogo;
+    int read, registered, updated, failed, review, nenga, logos, noLogo, kana;
     boolean halted;
     final List<String> errors = new ArrayList<>();
 
@@ -82,6 +82,7 @@ public final class Pipeline {
       StringBuilder b = new StringBuilder();
       if (read > 0) b.append("読み取り ").append(read).append("件");
       if (nenga > 0) b.append(b.length() > 0 ? " / " : "").append("年賀状 ").append(nenga).append("通");
+      if (kana > 0) b.append(b.length() > 0 ? " / " : "").append("読み仮名 ").append(kana).append("件");
       if (logos > 0) b.append(b.length() > 0 ? " / " : "").append("ロゴ ").append(logos).append("社");
       if (noLogo > 0) b.append(b.length() > 0 ? " / " : "").append("ロゴが見つからない ").append(noLogo).append("社");
       if (registered > 0) b.append(b.length() > 0 ? " / " : "").append("連絡先に登録 ").append(registered).append("件");
@@ -135,6 +136,20 @@ public final class Pipeline {
           if (g == null) g = new Gemini(c);
           Nenga.file(s, id, g.recognizeNenga(next));
           sum.nenga++;
+        } else if (step.equals("kana")) {
+          progress.update("読み仮名を補っています（残り" + left + "件）" + label);
+          if (g == null) g = new Gemini(c);
+          String kana = g.kana(next).optString("kana").trim();
+          JSONObject p = s.person(id);
+          p.remove("queue");
+          p.put("kanaTried", true);
+          if (!kana.isEmpty() && p.optString("kana").isEmpty()) {
+            p.put("kana", kana);
+            sum.kana++;
+            // Registered on this phone: the contact gets the reading too.
+            if (Contacts.registered(c, p) && canWriteContacts(c)) p.put("queue", "contact");
+          }
+          s.put(p);
         } else if (step.equals("logo") || step.equals("relogo")) {
           // relogo: asked again for this card, so it replaces the logo it shares with its company.
           progress.update("会社ロゴを切り出し中（残り" + left + "件）" + label);

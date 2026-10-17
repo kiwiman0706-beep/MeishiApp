@@ -31,7 +31,7 @@ const KIND_LABEL = {
 // Fields that only make sense on one device (contact row ids, queues): never written to the vault.
 const LOCAL = [
   "contactRawId", "contactAccount", "contactPhoto", "queue", "queueError", "contactDuplicate",
-  "suggestion", "contactUnlinked", "calendarEventId", "contactMerged", "logoTried",
+  "suggestion", "contactUnlinked", "calendarEventId", "contactMerged", "logoTried", "kanaTried",
 ];
 
 // ---- time (Asia/Tokyo, like the Java side) ----------------------------------------

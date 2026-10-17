@@ -1,5 +1,11 @@
 # 開発引き継ぎ
 
+## 0.13.0での変更（読み仮名・ウィジェット）
+
+- 連絡先の氏名：`Contacts.name` で表示名に加えて姓・名（日本語は「姓 名」、漢字・かなを含まなければ「名 姓」）と読みの姓・名（`PHONETIC_FAMILY/GIVEN_NAME`、`PhoneticNameStyle.JAPANESE`）を書く。以前は読み全体を `PHONETIC_GIVEN_NAME` だけに入れていた。起動時に1回、登録済みの連絡先をこの形で書き直す（`contactNameRule`=1、キュー工程 `contact`）。統合済み（`contactMerged`）の連絡先は、読みが空のときだけ読みを足す。
+- 読み取り：`CARD_PROMPT` で振り仮名が無くてもローマ字表記からひらがなの読みを作る。読み取り済みで読みが空の名刺は、メニュー「読み仮名を補う」（`kanaFill`、工程 `kana`：全文テキストだけをGeminiに送る `Gemini.kana`）。補えたら登録済みの連絡先も更新。試した名刺は `kanaTried`（端末固有）。
+- ウィジェット：メニュー「ホーム画面にウィジェットを追加」（`pinWidget` → `requestPinAppWidget`、非対応のランチャーでは手順を表示）。ピッカー用に見本入りの `widget_preview` と `previewImage`。受信側は `exported="true"`。`state.widgets` に設置数。
+
 ## 0.12.0での変更（重複の一括統合・会社一覧・ロゴ切り出し）
 
 - 連絡先の重複判定：携帯（mobile欄、または070/080/090）・メール・同じ氏名だけを根拠にする。会社の代表番号だけの一致は重複にしない（`Contacts.candidates` の `strong`）。候補一覧では代表番号だけの一致を最後に「同じ会社の別の人かも」と表示。既存の通知は起動時に1回だけ新ルールで再判定（`contactDupRule`=2）。このアプリが作った連絡先は候補から除く。

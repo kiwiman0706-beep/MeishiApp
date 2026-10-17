@@ -9,6 +9,7 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_recent"
-    android:previewLayout="@layout/widget_recent"
+    android:previewLayout="@layout/widget_preview"
+    android:previewImage="@drawable/ic_app"
     android:description="@string/widget_description"
     android:widgetCategory="home_screen" />

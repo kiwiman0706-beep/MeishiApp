@@ -70,11 +70,7 @@ public final class Contacts {
   }
 
   static void rows(JSONObject p, ArrayList<ContentProviderOperation> ops, Row row) {
-    ops.add(
-        row.make(StructuredName.CONTENT_ITEM_TYPE)
-            .withValue(StructuredName.DISPLAY_NAME, p.optString("name"))
-            .withValue(StructuredName.PHONETIC_GIVEN_NAME, p.optString("kana"))
-            .build());
+    ops.add(name(row.make(StructuredName.CONTENT_ITEM_TYPE), p).build());
     ops.add(
         row.make(Organization.CONTENT_ITEM_TYPE)
             .withValue(Organization.COMPANY, p.optString("company"))
@@ -120,6 +116,37 @@ public final class Contacts {
                 Note.NOTE,
                 "Theta Meishi Hatchから登録\n交換日: " + p.optString("metDate") + "\n交換場所: " + p.optString("metPlace"))
             .build());
+  }
+
+  static boolean cjk(String s) {
+    return s.codePoints().anyMatch(ch -> Character.UnicodeScript.of(ch) == Character.UnicodeScript.HAN
+        || Character.UnicodeScript.of(ch) == Character.UnicodeScript.HIRAGANA
+        || Character.UnicodeScript.of(ch) == Character.UnicodeScript.KATAKANA);
+  }
+
+  // "山田 太郎" / "やまだ たろう" → family + given (and their readings), so Google Contacts shows
+  // and sorts by the reading. Western names ("Taro Yamada") are given name first.
+  static String[] parts(String s) {
+    String[] a = s.trim().split("[ 　]+", 2);
+    return a.length == 2 ? a : new String[] {s.trim(), ""};
+  }
+
+  static ContentProviderOperation.Builder name(ContentProviderOperation.Builder b, JSONObject p) {
+    String name = p.optString("name").trim();
+    String kana = java.text.Normalizer.normalize(p.optString("kana").trim(), java.text.Normalizer.Form.NFKC);
+    b.withValue(StructuredName.DISPLAY_NAME, name);
+    String[] n = parts(name);
+    boolean japanese = cjk(name);
+    if (!n[1].isEmpty()) {
+      b.withValue(StructuredName.FAMILY_NAME, japanese ? n[0] : n[1]).withValue(StructuredName.GIVEN_NAME, japanese ? n[1] : n[0]);
+      b.withValue(StructuredName.FULL_NAME_STYLE, japanese ? ContactsContract.FullNameStyle.JAPANESE : ContactsContract.FullNameStyle.WESTERN);
+    } else if (!name.isEmpty()) b.withValue(japanese ? StructuredName.FAMILY_NAME : StructuredName.GIVEN_NAME, name);
+    if (!kana.isEmpty()) {
+      String[] k = parts(kana);
+      b.withValue(StructuredName.PHONETIC_FAMILY_NAME, k[0]).withValue(StructuredName.PHONETIC_GIVEN_NAME, k[1]);
+      b.withValue(StructuredName.PHONETIC_NAME_STYLE, ContactsContract.PhoneticNameStyle.JAPANESE);
+    }
+    return b;
   }
 
   // Rewrites the contact this app created so edits made in the app reach Google.
@@ -384,11 +411,19 @@ public final class Contacts {
   static void fill(Context c, JSONObject p, long raw, ArrayList<ContentProviderOperation> ops) throws Exception {
     HashSet<String> phones = new HashSet<>(), emails = new HashSet<>(), sites = new HashSet<>();
     HashSet<String> kinds = new HashSet<>();
+    long nameRow = -1;
+    boolean hasReading = false;
     try (Cursor q =
         c.getContentResolver()
             .query(
                 ContactsContract.Data.CONTENT_URI,
-                new String[] {ContactsContract.Data.MIMETYPE, ContactsContract.Data.DATA1},
+                new String[] {
+                  ContactsContract.Data.MIMETYPE,
+                  ContactsContract.Data.DATA1,
+                  ContactsContract.Data._ID,
+                  StructuredName.PHONETIC_FAMILY_NAME,
+                  StructuredName.PHONETIC_GIVEN_NAME
+                },
                 ContactsContract.Data.RAW_CONTACT_ID + "=?",
                 new String[] {"" + raw},
                 null)) {
@@ -398,7 +433,21 @@ public final class Contacts {
         if (mime.equals(Phone.CONTENT_ITEM_TYPE)) phones.add(digits(v));
         if (mime.equals(Email.CONTENT_ITEM_TYPE)) emails.add(v.trim().toLowerCase(Locale.ROOT));
         if (mime.equals(Website.CONTENT_ITEM_TYPE)) sites.add(v.trim());
+        if (mime.equals(StructuredName.CONTENT_ITEM_TYPE)) {
+          nameRow = q.getLong(2);
+          hasReading = !(q.isNull(3) || q.getString(3).isEmpty()) || !(q.isNull(4) || q.getString(4).isEmpty());
+        }
       }
+    }
+    String kana = java.text.Normalizer.normalize(p.optString("kana").trim(), java.text.Normalizer.Form.NFKC);
+    if (nameRow >= 0 && !hasReading && !kana.isEmpty()) {
+      String[] k = parts(kana);
+      ops.add(
+          ContentProviderOperation.newUpdate(ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, nameRow))
+              .withValue(StructuredName.PHONETIC_FAMILY_NAME, k[0])
+              .withValue(StructuredName.PHONETIC_GIVEN_NAME, k[1])
+              .withValue(StructuredName.PHONETIC_NAME_STYLE, ContactsContract.PhoneticNameStyle.JAPANESE)
+              .build());
     }
     ArrayList<ContentProviderOperation> all = new ArrayList<>();
     rows(

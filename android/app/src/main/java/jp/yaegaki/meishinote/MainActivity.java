@@ -3,6 +3,7 @@ package jp.yaegaki.meishinote;
 import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.*;
+import android.appwidget.AppWidgetManager;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.graphics.*;
@@ -179,10 +180,44 @@ public class MainActivity extends Activity {
     if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED);
     else registerReceiver(receiver, f);
     recheckContactDups();
+    refreshContactNames();
+  }
+
+  // Once: rewrite this app's contacts with family / given names and their readings
+  // (before 0.13 the whole reading went into one field and Google Contacts did not show it).
+  void refreshContactNames() {
+    if (prefs().getInt("contactNameRule", 0) >= 1 || !Pipeline.canWriteContacts(this)) return;
+    io.execute(
+        () -> {
+          try {
+            List<String> ids = new ArrayList<>();
+            JSONArray a = store.snapshot().getJSONArray("people");
+            for (int i = 0; i < a.length(); i++) {
+              JSONObject p = a.getJSONObject(i);
+              if (p.optString("queue").isEmpty() && p.has("contactRawId") && Contacts.registered(this, p)) ids.add(p.getString("id"));
+            }
+            prefs().edit().putInt("contactNameRule", 1).apply();
+            if (ids.isEmpty()) return;
+            Pipeline.enqueue(store, ids, "contact");
+            refresh();
+            startProcessing();
+          } catch (Exception ignored) {
+            // tried again on the next start
+          }
+        });
   }
 
   // Once per rule change: re-judge the "already in Google Contacts" notices with the current rule
   // (office numbers alone no longer count), dropping the ones that were only colleagues.
+  static boolean needsKana(JSONObject p) {
+    return !p.optString("name").trim().isEmpty()
+        && p.optString("kana").trim().isEmpty()
+        && !p.optString("rawText").trim().isEmpty()
+        && !p.optString("kind").equals(Nenga.INBOX)
+        && !p.optBoolean("kanaTried")
+        && p.optString("queue").isEmpty();
+  }
+
   boolean linked(String id) throws Exception {
     return Contacts.registered(this, store.person(id));
   }
@@ -292,6 +327,10 @@ public class MainActivity extends Activity {
         RecentWidget.update(this);
       }
       JSONObject state = store.snapshot();
+      int kana = 0;
+      JSONArray everyone = state.getJSONArray("people");
+      for (int i = 0; i < everyone.length(); i++) if (needsKana(everyone.getJSONObject(i))) kana++;
+      state.put("kanaMissing", kana);
       state
           .put("keySet", getSharedPreferences("prefs", 0).contains("key"))
           .put("model", getSharedPreferences("prefs", 0).getString("model", "gemini-2.5-flash"))
@@ -302,6 +341,7 @@ public class MainActivity extends Activity {
           .put("contactPhoto", prefs().getString("contactPhoto", "card"))
           .put("driveFolderName", prefs().getString("driveFolderName", ""))
           .put("autoContact", prefs().getBoolean("autoContact", true))
+          .put("widgets", AppWidgetManager.getInstance(this).getAppWidgetIds(new ComponentName(this, RecentWidget.class)).length)
           .put("syncEnabled", prefs().getBoolean("syncEnabled", false))
           .put("autoCalendar", prefs().getBoolean("autoCalendar", false))
           .put("calendarName", CalendarSync.allowed(this) ? CalendarSync.calendarName(this) : "")
@@ -1184,6 +1224,34 @@ public class MainActivity extends Activity {
               event("review", id);
             });
         break;
+      case "kanaFill":
+        {
+          // Readings for cards already read (text only, no image: very cheap).
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          List<String> ids = new ArrayList<>();
+          JSONArray a = store.snapshot().getJSONArray("people");
+          for (int i = 0; i < a.length(); i++) {
+            JSONObject p = a.getJSONObject(i);
+            if (needsKana(p)) ids.add(p.getString("id"));
+          }
+          if (ids.isEmpty()) {
+            event("toast", "読み仮名を補える名刺はありません");
+            break;
+          }
+          Pipeline.enqueue(store, ids, "kana");
+          refresh();
+          startProcessing();
+          event("toast", ids.size() + "件の読み仮名を補います（バックグラウンド）");
+          break;
+        }
+      case "pinWidget":
+        {
+          AppWidgetManager m = AppWidgetManager.getInstance(this);
+          if (m.isRequestPinAppWidgetSupported()) m.requestPinAppWidget(new ComponentName(this, RecentWidget.class), null, null);
+          else
+            event("report", "ホーム画面の何もないところを長押し →「ウィジェット」→「Theta Meishi Hatch」の「最近の名刺」をホーム画面に置いてください。");
+          break;
+        }
       case "logoAll":
       case "logoOne":
         {

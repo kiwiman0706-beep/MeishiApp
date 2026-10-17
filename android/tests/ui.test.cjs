@@ -460,6 +460,16 @@ const p = (id, name, company, status = "confirmed") => ({
       render();
     });
   }
+  // Menu: put the widget on the home screen; fill readings for Google Contacts.
+  await page.evaluate((d) => { onNative({ type: "state", data: { ...d, kanaMissing: 3, widgets: 0 } }); go("menu"); }, demo);
+  await page.getByRole("button", { name: /ホーム画面にウィジェットを追加/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "pinWidget" });
+  assert(await page.getByText("読み仮名が空の名刺 3件", { exact: false }).isVisible());
+  await page.getByRole("button", { name: /読み仮名を補う/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "kanaFill" });
+  await page.evaluate(() => go("home"));
   // HTML injection in content must be rendered as text.
   demo.people[0].name = '<img src=x onerror="window.pwned=true">';
   demo.people[0].notes[0].text = "<script>window.pwned=true</script>";

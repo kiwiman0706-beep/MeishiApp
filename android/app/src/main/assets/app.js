@@ -1207,8 +1207,11 @@ function menuPage() {
     ],
   )}${section("年賀状", [
     menuRow("mail", "年賀状・お便り", "年賀状の送受信、暑中見舞い・カード・手紙", "go('nenga')"),
-  ])}${section("読み取り", [
+  ])}${phoneOnly("widget", section("ホーム画面", [
+    menuRow("card", "ホーム画面にウィジェットを追加", state.widgets ? `設置済み（${state.widgets}個）・ 最近登録した名刺・開いた名刺` : "最近登録した名刺・開いた名刺を表示", "call('pinWidget')"),
+  ]))}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
+    state.kanaMissing ? menuRow("spark", "読み仮名を補う", `読み仮名が空の名刺 ${state.kanaMissing}件（読み取った全文から・画像は送りません）`, "if(confirm('読み取り済みの全文（ローマ字表記など）から読み仮名を補い、Google連絡先にも反映します。続けますか？'))call('kanaFill')") : "",
   ])}${section("同期", !can("sync") ? [
     menuRow("folder", "Theta Vault フォルダ", esc(state.vaultPath || "未設定") + (state.vaultWarnings?.length ? ` ・ ⚠ 読み込めないノート ${state.vaultWarnings.length}件` : ""), "call('chooseVault')", state.vaultWarnings?.length ? "attnrow" : ""),
   ] : [
@@ -1225,7 +1228,7 @@ function menuPage() {
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.12.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.13.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
