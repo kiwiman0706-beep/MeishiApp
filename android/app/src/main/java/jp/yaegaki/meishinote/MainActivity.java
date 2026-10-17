@@ -1371,7 +1371,7 @@ public class MainActivity extends Activity {
         Runnable go =
             () ->
                 task(
-                    "インポート中",
+                    "ZIPを取り込み中",
                     () -> {
                       JSONObject r = BulkImport.run(this, u, toContacts, t -> event("busy", t));
                       if (r.optInt("queued") > 0) startProcessing();

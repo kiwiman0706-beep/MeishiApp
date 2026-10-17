@@ -251,7 +251,7 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: /表・裏の順に撮る/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "bulkScan", mode: "pair" });
-  await page.getByRole("button", { name: /Eightなどからインポート/ }).click();
+  await page.getByRole("button", { name: /ZIPから一括取り込み/ }).click();
   await page.getByRole("button", { name: /ZIPファイルを選ぶ/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "importZip", toContacts: false });

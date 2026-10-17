@@ -59,7 +59,8 @@ public final class Pipeline {
   // reading warnings stay 要確認 so they surface in the list.
   static void apply(JSONObject p, JSONObject r) throws Exception {
     // Gemini only returns card fields, so tags / metDate / metPlace typed by the user survive.
-    for (String k : Store.FIELDS) if (r.has(k)) p.put(k, r.optString(k));
+    // Only values Gemini actually read replace what is there (e.g. names from an import's file names).
+    for (String k : Store.FIELDS) if (!r.optString(k).trim().isEmpty()) p.put(k, r.optString(k));
     p.put("rawText", r.optString("rawText")).put("warnings", r.optString("warnings"));
     if (p.optString("metDate").isEmpty())
       p.put(
@@ -117,7 +118,8 @@ public final class Pipeline {
               autoContact(c)
                   && !p.optString("name").trim().isEmpty()
                   && !p.optBoolean("contactUnlinked")
-                  && !p.optBoolean("contactRegistered");
+                  && !p.optBoolean("contactRegistered")
+                  && !p.optBoolean("noAutoContact");
           if (contact) p.put("queue", "contact");
           else p.remove("queue");
           if (p.optString("status").equals("review")) sum.review++;

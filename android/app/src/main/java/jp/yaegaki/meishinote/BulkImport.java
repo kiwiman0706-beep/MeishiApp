@@ -137,10 +137,11 @@ public final class BulkImport {
           OutputStream out = new FileOutputStream(zip)) {
         Store.copy(in, out, 4L * 1024 * 1024 * 1024);
       }
-      try (ZipFile z = new ZipFile(zip)) {
+      try (ZipFile z = open(zip)) {
         // Entries by normalised path, so a CSV saying "images\\a.jpg" or "Images/A.JPG" still resolves.
         Map<String, ZipEntry> entries = new HashMap<>();
         ZipEntry table = null;
+        List<ZipEntry> pictures = new ArrayList<>();
         int count = 0;
         for (Enumeration<? extends ZipEntry> e = z.entries(); e.hasMoreElements(); ) {
           ZipEntry en = e.nextElement();
@@ -149,10 +150,14 @@ public final class BulkImport {
           String path = en.getName().replace('\\', '/');
           if (path.startsWith("__MACOSX/")) continue;
           entries.put(path.toLowerCase(Locale.ROOT), en);
+          if (path.toLowerCase(Locale.ROOT).matches(".*\\.(jpe?g|png|webp|heic|heif|pdf)$")) pictures.add(en);
           if (path.toLowerCase(Locale.ROOT).endsWith(".csv")
               && (table == null || path.toLowerCase(Locale.ROOT).endsWith("cards.csv"))) table = en;
         }
-        if (table == null) throw new IOException("ZIPの中にCSVファイルが見つかりません");
+        if (table == null) {
+          if (pictures.isEmpty()) throw new IOException("ZIPの中にCSVも名刺画像も見つかりません");
+          return images(c, store, z, pictures, toContacts, progress);
+        }
         String base = table.getName().replace('\\', '/');
         base = base.contains("/") ? base.substring(0, base.lastIndexOf('/') + 1) : "";
         String text;
@@ -234,6 +239,7 @@ public final class BulkImport {
           }
           boolean named = !p.optString("name").trim().isEmpty();
           p.put("status", named ? "confirmed" : "new");
+          if (!toContacts) p.put("noAutoContact", true);
           store.put(p);
           if (!pics.isEmpty()) {
             JSONObject res = importer.run(pics, "all", p.getString("id"), t -> {}, true);
@@ -264,6 +270,143 @@ public final class BulkImport {
       zip.delete();
       for (File f : staged) f.delete();
     }
+  }
+
+  // Zips made on Windows store names in Shift_JIS without the UTF-8 flag.
+  static ZipFile open(File f) throws IOException {
+    try {
+      ZipFile z = new ZipFile(f, StandardCharsets.UTF_8);
+      for (Enumeration<? extends ZipEntry> e = z.entries(); e.hasMoreElements(); ) e.nextElement();
+      return z;
+    } catch (ZipException | IllegalArgumentException malformed) {
+      // Depending on the runtime, a bad name fails at open (ZipException) or while listing.
+      return new ZipFile(f, Charset.forName("windows-31j"));
+    }
+  }
+
+  // Eight's image download: "20211217_氏名_会社名_20792827764.jpg" and "..._裏.jpg" for the back.
+  static final java.util.regex.Pattern EIGHT =
+      java.util.regex.Pattern.compile("^(\\d{8})_(.+?)(?:_(.*))?_(\\d{6,})(?:_(表|裏))?$");
+  // Generic pairing: "001_1.jpg" / "001_2.jpg", "山田_表.jpg" / "山田_裏.jpg", "x-front" / "x-back".
+  static final java.util.regex.Pattern SIDE =
+      java.util.regex.Pattern.compile(
+          "^(.*?)[\\s_-]*(1|2|3|4|表|裏|front|back|omote|ura)$", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+  static final class Card {
+    String key, date = "", name = "", company = "";
+    final TreeMap<Integer, List<ZipEntry>> sides = new TreeMap<>();
+  }
+
+  static int side(String s) {
+    s = s.toLowerCase(Locale.ROOT);
+    if (s.equals("2") || s.equals("裏") || s.equals("back") || s.equals("ura")) return 2;
+    if (s.equals("3")) return 3;
+    if (s.equals("4")) return 4;
+    return 1;
+  }
+
+  static Map<String, Card> group(List<ZipEntry> pictures) {
+    Map<String, Card> cards = new TreeMap<>();
+    for (ZipEntry en : pictures) {
+      String path = en.getName().replace('\\', '/');
+      String dir = path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : "";
+      String file = path.substring(path.lastIndexOf('/') + 1);
+      String stem = java.text.Normalizer.normalize(file.replaceAll("\\.[^.]+$", ""), java.text.Normalizer.Form.NFC);
+      java.util.regex.Matcher m = EIGHT.matcher(stem), g = SIDE.matcher(stem);
+      Card card;
+      int side;
+      if (m.matches()) {
+        card = cards.computeIfAbsent("eight:" + m.group(4), k -> new Card());
+        card.key = "eight:" + m.group(4);
+        card.date = m.group(1).substring(0, 4) + "-" + m.group(1).substring(4, 6) + "-" + m.group(1).substring(6);
+        card.name = m.group(2).trim();
+        card.company = m.group(3) == null ? "" : m.group(3).replace("__", " ").replace('_', ' ').trim();
+        side = m.group(5) == null ? 1 : side(m.group(5));
+      } else if (g.matches() && !g.group(1).isEmpty()) {
+        String k = "img:" + dir + "/" + g.group(1);
+        card = cards.computeIfAbsent(k, x -> new Card());
+        card.key = k;
+        side = side(g.group(2));
+      } else {
+        String k = "img:" + path;
+        card = cards.computeIfAbsent(k, x -> new Card());
+        card.key = k;
+        side = 1;
+      }
+      card.sides.computeIfAbsent(side, x -> new ArrayList<>()).add(en);
+    }
+    return cards;
+  }
+
+  // Groups image files into people by file name, then lets Gemini read the details.
+  static JSONObject images(
+      Context c, Store store, ZipFile z, List<ZipEntry> pictures, boolean toContacts, Pipeline.Progress progress)
+      throws Exception {
+    Map<String, Card> cards = group(pictures);
+    Set<String> keys = new HashSet<>();
+    JSONArray people = store.snapshot().getJSONArray("people");
+    for (int i = 0; i < people.length(); i++) keys.add(people.getJSONObject(i).optString("importKey"));
+    Importer importer = new Importer(c);
+    JSONArray errors = new JSONArray();
+    List<String> recognize = new ArrayList<>();
+    int added = 0, skipped = 0, images = 0, n = 0;
+    for (Card card : cards.values()) {
+      progress.update("名刺画像を取り込み中 " + (++n) + " / " + cards.size() + (card.name.isEmpty() ? "" : "\n" + card.name));
+      if (keys.contains(card.key)) {
+        skipped++;
+        continue;
+      }
+      List<File> staged = new ArrayList<>();
+      List<Uri> uris = new ArrayList<>();
+      try {
+        for (List<ZipEntry> list : card.sides.values())
+          for (ZipEntry en : list) {
+            if (en.getSize() > 100L * 1024 * 1024) {
+              errors.put(en.getName() + "：画像が大きすぎます");
+              continue;
+            }
+            String ext = en.getName().toLowerCase(Locale.ROOT).replaceAll("^.*(\\.[a-z0-9]{1,5})$", "$1");
+            File f = new File(c.getCacheDir(), "import-" + UUID.randomUUID() + ext);
+            staged.add(f);
+            try (InputStream in = z.getInputStream(en);
+                OutputStream out = new FileOutputStream(f)) {
+              Store.copy(in, out, 100L * 1024 * 1024);
+            }
+            Uri u = FilesProvider.uri(c, f);
+            String name = en.getName().replace('\\', '/');
+            importer.names.put(u.toString(), name.substring(name.lastIndexOf('/') + 1));
+            uris.add(u);
+          }
+        if (uris.isEmpty()) continue;
+        JSONObject p = Store.empty();
+        // File-name details are a head start; Gemini fills in (and may correct) the rest.
+        p.put("name", card.name).put("company", card.company).put("metDate", card.date).put("importKey", card.key);
+        if (!toContacts) p.put("noAutoContact", true);
+        store.put(p);
+        JSONObject res = importer.run(uris, "all", p.getString("id"), t -> {}, true);
+        JSONArray e = res.getJSONArray("errors");
+        for (int k = 0; k < e.length(); k++) errors.put(e.getString(k));
+        if (res.optInt("pages") == 0) {
+          // Every image was already in the app (imported another way): don't leave an empty card.
+          store.removeQuietly(p.getString("id"));
+          skipped++;
+          continue;
+        }
+        images += res.optInt("pages");
+        keys.add(card.key);
+        recognize.add(p.getString("id"));
+        added++;
+      } finally {
+        for (File f : staged) f.delete();
+      }
+    }
+    Pipeline.enqueue(store, recognize, "recognize");
+    return new JSONObject()
+        .put("added", added)
+        .put("skipped", skipped)
+        .put("images", images)
+        .put("queued", recognize.size())
+        .put("errors", errors);
   }
 
   static String first(Map<String, List<String>> v, String k) {

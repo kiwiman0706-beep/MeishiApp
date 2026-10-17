@@ -684,7 +684,7 @@ function bulkSheet() {
 }
 function importZipSheet() {
   modal(
-    `<h2>${icon("download")} Eightなどからインポート</h2><p class="caption">CSV（名刺の項目）と名刺画像を1つのZIPにまとめたファイルを読み込みます。作り方はリポジトリの docs/IMPORT_FORMAT.md を参照してください。</p><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>Google連絡先にも登録する</b><small>Eight経由で既に登録済みならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。氏名が空で画像がある行はGeminiで読み取ります。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
+    `<h2>${icon("download")} ZIPから一括取り込み</h2><p class="caption">名刺画像をまとめたZIPを読み込み、1人ずつに分けて保存します。読み取りはバックグラウンドのGeminiが行うので、終わるまで他の操作をしていて大丈夫です。</p><div class="tip"><b>画像だけのZIP</b><div class="step"><b>・</b><span>Eightの画像（<code>交換日_氏名_会社_ID.jpg</code>、裏は末尾<code>_裏</code>）は表裏を自動でまとめ、氏名・会社・交換日も入れます。</span></div><div class="step"><b>・</b><span><code>001_1.jpg</code>／<code>001_2.jpg</code>、<code>_表</code>／<code>_裏</code> の組も1人にまとめます。それ以外は1枚 = 1人。</span></div><b>CSV付きZIP</b>：CSVの項目と画像をそのまま登録します（仕様：docs/IMPORT_SPEC.md）。</div><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後にGoogle連絡先へ登録</b><small>Eight等から既に連絡先へ入っているならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。読み取りの費用の目安は1人1円以下です。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
   );
 }
 function syncStart() {
@@ -716,7 +716,7 @@ function menuPage() {
       state.folder ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
       menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})"),
       menuRow("edit", "手入力で追加", "画像なしで登録", "manualAdd()"),
-      menuRow("download", "Eightなどからインポート", "CSV＋画像のZIPファイル", "importZipSheet()"),
+      menuRow("download", "ZIPから一括取り込み", "名刺画像だけのZIP（Eightの画像など）・CSV付きZIP", "importZipSheet()"),
     ],
   )}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
@@ -733,7 +733,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Meishi-Claude 0.6.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Meishi-Claude 0.7.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
