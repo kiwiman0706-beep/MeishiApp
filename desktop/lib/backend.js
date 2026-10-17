@@ -120,7 +120,31 @@ class Backend {
         const t = model.merge(st.person(id), st.person(q.sourceId));
         st.put(t);
         st.remove(q.sourceId);
-        return this.event("open", id);
+        return q.stay ? undefined : this.event("open", id);
+      }
+      case "mergeBatch": {
+        // Card pairs from the duplicate sheet (contacts live on the phone).
+        const gone = new Map();
+        let done = 0;
+        for (let [t, src] of q.pairs || []) {
+          while (gone.has(t)) t = gone.get(t);
+          while (gone.has(src)) src = gone.get(src);
+          if (t === src) continue;
+          st.put(model.merge(st.person(t), st.person(src)));
+          st.remove(src);
+          gone.set(src, t);
+          done++;
+        }
+        if ((q.contacts || []).length) this.event("report", "Google連絡先の重複はスマホ版で統合してください。");
+        return this.toast(done + "件を統合しました");
+      }
+      case "logoAll":
+      case "logoOne": {
+        this.needKey();
+        const ids = action === "logoOne" ? [id] : model.logoPicks(st.people());
+        if (!ids.length) return this.toast("ロゴを探す会社はありません（ロゴのある会社・試した会社は除きます）");
+        this.enqueue(ids, action === "logoOne" ? "relogo" : "logo");
+        return this.toast(ids.length + "社のロゴを名刺から探します（バックグラウンド）");
       }
       case "notDuplicate": {
         for (const [a, b] of [[id, q.other], [q.other, id]]) {
@@ -356,16 +380,21 @@ class Backend {
     if (this.running) return;
     this.running = true;
     let done = 0, failed = 0;
+    const logos = { none: 0 };
     const errors = [];
     try {
       for (;;) {
         const next = this.store.people().find((p) => p.queue);
         if (!next) break;
         const left = this.store.people().filter((p) => p.queue).length;
-        this.processing = `${next.queue === "nenga" ? "年賀状" : "名刺"}を読み取り中（残り${left}件）`;
+        const what = { nenga: "年賀状を読み取り中", logo: "会社ロゴを切り出し中", relogo: "会社ロゴを切り出し中" }[next.queue] || "名刺を読み取り中";
+        this.processing = `${what}（残り${left}件）`;
         this.refresh();
         try {
           if (next.queue === "nenga") this.fileNenga(next.id, await this.read(next, "nenga"));
+          else if (next.queue === "logo" || next.queue === "relogo") {
+            if (!(await this.cutLogo(next))) logos.none++;
+          }
           else {
             const r = await this.read(next, "card");
             const p = model.applyResult(this.store.person(next.id), r);
@@ -393,12 +422,40 @@ class Backend {
       this.running = false;
       this.processing = "";
       if (done + failed) {
-        const text = `読み取り ${done}件${failed ? ` / 失敗 ${failed}件` : ""}` + (errors.length ? "\n" + errors.join("\n") : "");
+        const text = `処理 ${done}件${failed ? ` / 失敗 ${failed}件` : ""}${logos.none ? ` / ロゴが見つからない ${logos.none}社` : ""}` + (errors.length ? "\n" + errors.join("\n") : "");
         this.settings.set({ lastReport: text });
         this.toast(text.split("\n")[0]);
       } else if (errors.length) this.event("report", errors.join("\n"));
       this.refresh();
     }
+  }
+
+  // Logo.java: Gemini says where the logo is on the front page; the cut-out goes to everyone at
+  // the company without a logo (and replaces the previous cut-out when asked again).
+  async cutLogo(next) {
+    const st = this.store;
+    const src = fs.readFileSync(st.mediaFile(next.pages[0].file));
+    const front = await this.svc.imaging.toJpeg(src, 1600);
+    const s = this.settings;
+    const r = await gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, "logo", [front], this.fetch);
+    const p = st.person(next.id);
+    const old = next.queue === "relogo" ? p.logo || "" : "";
+    delete p.queue;
+    p.logoTried = true;
+    st.put(p, false);
+    const jpeg = await this.svc.imaging.crop(front, (w, h) => model.logoRect(r.box, w, h), 512);
+    if (!jpeg) return false;
+    const name = crypto.randomUUID() + ".jpg";
+    fs.writeFileSync(st.mediaFile(name), jpeg);
+    const key = model.companyKey(p);
+    for (const x of st.people()) {
+      const same = x.id === p.id || (key && model.companyKey(x) === key);
+      if (!same || x.kind === model.INBOX || (x.logo && x.logo !== old) || (x.logo && !old)) continue;
+      const y = st.person(x.id);
+      y.logo = name;
+      st.put(y);
+    }
+    return true;
   }
 
   // Nenga.file: attach the card to the matching person, or turn it into a new person.

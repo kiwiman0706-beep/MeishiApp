@@ -24,7 +24,11 @@ function setup(geminiResult) {
     return { ok: true, status: 200, text: async () => JSON.stringify(body), json: async () => body };
   };
   const events = [];
-  const imaging = { toJpeg: async (b) => b, pdfPages: async (b) => [b, Buffer.concat([b, Buffer.from("2")])] };
+  const imaging = {
+    toJpeg: async (b) => b,
+    pdfPages: async (b) => [b, Buffer.concat([b, Buffer.from("2")])],
+    crop: async (b, rectOf) => (rectOf(1000, 600) ? Buffer.from("logo-of-" + b) : null),
+  };
   const backend = new Backend({
     store,
     settings: { get: (k, d) => (k in values ? values[k] : d), set: (o) => Object.assign(values, o) },
@@ -114,6 +118,38 @@ test("phone-only actions answer with a toast, caps say desktop", async () => {
   const s = t.backend.state();
   assert.strictEqual(s.platform, "desktop");
   assert.ok(!s.caps.includes("contacts") && s.caps.includes("vault"));
+});
+
+test("company logo cut from one card goes to colleagues; bulk merge; spelling variants", async () => {
+  const t = setup({ box: "100,100,400,600" });
+  t.setKey("k");
+  await t.backend.importFiles([t.file("a.jpg", "cardA"), t.file("b.jpg", "cardB"), t.file("c.jpg", "cardC")], {});
+  await t.settle();
+  const [a, b, c] = t.store.people().map((p) => p.id);
+  await t.backend.dispatch("save", { id: a, person: { name: "A", company: "株式会社サンプル" } });
+  await t.backend.dispatch("save", { id: b, person: { name: "B", company: "(株)サンプル" } });
+  await t.backend.dispatch("save", { id: c, person: { name: "C", company: "別会社" } });
+  const picks = require("../lib/model").logoPicks(t.store.people());
+  assert.strictEqual(picks.length, 2, "one card per company");
+  await t.backend.dispatch("logoOne", { id: a });
+  await t.settle();
+  const logo = t.store.person(a).logo;
+  assert.ok(logo && t.store.person(b).logo === logo, "colleague gets the logo");
+  assert.ok(!t.store.person(c).logo);
+  assert.strictEqual(fs.readFileSync(t.store.mediaFile(logo), "utf8"), "logo-of-cardA");
+  // Cutting again replaces the shared cut-out, but not a logo picked by hand.
+  const hand = t.store.person(c);
+  hand.company = "サンプル株式会社";
+  hand.logo = "hand.jpg";
+  t.store.put(hand);
+  await t.backend.dispatch("logoOne", { id: b });
+  await t.settle();
+  assert.notStrictEqual(t.store.person(a).logo, logo);
+  assert.strictEqual(t.store.person(a).logo, t.store.person(b).logo);
+  assert.strictEqual(t.store.person(c).logo, "hand.jpg");
+  // Merge several pairs at once, including a chain.
+  await t.backend.dispatch("mergeBatch", { pairs: [[a, b], [b, c]], contacts: [] });
+  assert.strictEqual(t.store.people().length, 1);
 });
 
 function get(port, p, headers = {}, method = "GET", body) {

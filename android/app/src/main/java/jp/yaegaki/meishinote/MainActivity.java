@@ -178,6 +178,58 @@ public class MainActivity extends Activity {
     IntentFilter f = new IntentFilter(getPackageName() + ".RECORDING");
     if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED);
     else registerReceiver(receiver, f);
+    recheckContactDups();
+  }
+
+  // Once per rule change: re-judge the "already in Google Contacts" notices with the current rule
+  // (office numbers alone no longer count), dropping the ones that were only colleagues.
+  boolean linked(String id) throws Exception {
+    return Contacts.registered(this, store.person(id));
+  }
+
+  // Two cards become one; one Google contact survives (the target's, or the source's taken over).
+  void mergeNow(String id, String sourceId) throws Exception {
+    JSONObject target = store.person(id), source = store.person(sourceId);
+    CalendarSync.remove(this, source); // the merged person gets (or keeps) one event
+    boolean targetLinked = Contacts.registered(this, target), sourceLinked = Contacts.registered(this, source);
+    store.mergePeople(id, sourceId);
+    if (!targetLinked && !sourceLinked) return;
+    JSONObject t = store.person(id);
+    if (targetLinked && sourceLinked) Contacts.remove(this, source);
+    else if (sourceLinked) {
+      long raw = source.getLong("contactRawId");
+      Contacts.relink(this, raw, sourceId, id);
+      t.put("contactRawId", raw).put("contactAccount", source.optString("contactAccount"));
+      if (source.optBoolean("contactMerged")) t.put("contactMerged", true);
+    }
+    t.remove("contactDuplicate");
+    store.put(t);
+    Contacts.update(this, store.person(id));
+  }
+
+  void recheckContactDups() {
+    if (prefs().getInt("contactDupRule", 0) >= 2
+        || checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return;
+    io.execute(
+        () -> {
+          try {
+            JSONArray a = store.snapshot().getJSONArray("people");
+            for (int i = 0; i < a.length(); i++) {
+              JSONObject x = a.getJSONObject(i);
+              if (!x.has("contactDuplicate")) continue;
+              JSONObject p = store.person(x.getString("id"));
+              String d = Contacts.duplicate(this, p);
+              if (d.equals(p.optString("contactDuplicate"))) continue;
+              if (d.isEmpty()) p.remove("contactDuplicate");
+              else p.put("contactDuplicate", d);
+              store.put(p);
+            }
+            prefs().edit().putInt("contactDupRule", 2).apply();
+            refresh();
+          } catch (Exception ignored) {
+            // tried again on the next start
+          }
+        });
   }
 
   WebResourceResponse response(String type, InputStream in) {
@@ -771,36 +823,77 @@ public class MainActivity extends Activity {
         {
           if (!RecordingService.activeId.isEmpty()) throw new IOException("録音を停止してください");
           String sourceId = q.getString("sourceId");
-          JSONObject target = store.person(id), source = store.person(sourceId);
-          CalendarSync.remove(this, source); // the merged person gets (or keeps) one event
-          boolean targetLinked = Contacts.registered(this, target),
-              sourceLinked = Contacts.registered(this, source);
-          store.mergePeople(id, sourceId);
-          if (!targetLinked && !sourceLinked) {
+          boolean stay = q.optBoolean("stay");
+          if (!linked(id) && !linked(sourceId)) {
+            mergeNow(id, sourceId);
             refresh();
-            event("open", id);
+            if (!stay) event("open", id);
             break;
           }
-          // One Google contact survives: the target's, or the source's taken over.
           permission(
               new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
               () ->
                   task(
                       "連絡先を統合中",
                       () -> {
-                        JSONObject t = store.person(id);
-                        if (targetLinked && sourceLinked) Contacts.remove(this, source);
-                        else if (sourceLinked) {
-                          long raw = source.getLong("contactRawId");
-                          Contacts.relink(this, raw, sourceId, id);
-                          t.put("contactRawId", raw).put("contactAccount", source.optString("contactAccount"));
-                          if (source.optBoolean("contactMerged")) t.put("contactMerged", true);
-                        }
-                        t.remove("contactDuplicate");
-                        store.put(t);
-                        Contacts.update(this, store.person(id));
-                        event("open", id);
+                        mergeNow(id, sourceId);
+                        if (!stay) event("open", id);
                         event("toast", "名刺と連絡先を統合しました");
+                      }));
+          break;
+        }
+      case "mergeBatch":
+        {
+          // Several duplicates at once from the duplicate sheet: card pairs, and cards whose
+          // Google contact matches exactly one existing contact of the same person.
+          if (!RecordingService.activeId.isEmpty()) throw new IOException("録音を停止してください");
+          JSONArray pairs = q.optJSONArray("pairs"), contacts = q.optJSONArray("contacts");
+          int total = (pairs == null ? 0 : pairs.length()) + (contacts == null ? 0 : contacts.length());
+          if (total == 0) break;
+          permission(
+              new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+              () ->
+                  task(
+                      "まとめて統合中",
+                      () -> {
+                        Map<String, String> gone = new HashMap<>(); // merged-away id -> survivor
+                        int done = 0, n = 0;
+                        List<String> skipped = new ArrayList<>();
+                        for (int i = 0; pairs != null && i < pairs.length(); i++) {
+                          event("busy", "まとめて統合中 " + (++n) + " / " + total);
+                          String t = pairs.getJSONArray(i).getString(0), src = pairs.getJSONArray(i).getString(1);
+                          while (gone.containsKey(t)) t = gone.get(t);
+                          while (gone.containsKey(src)) src = gone.get(src);
+                          if (t.equals(src)) continue;
+                          mergeNow(t, src);
+                          gone.put(src, t);
+                          done++;
+                        }
+                        String photo = prefs().getString("contactPhoto", "card");
+                        for (int i = 0; contacts != null && i < contacts.length(); i++) {
+                          event("busy", "まとめて統合中 " + (++n) + " / " + total);
+                          String pid = contacts.getString(i);
+                          while (gone.containsKey(pid)) pid = gone.get(pid);
+                          JSONObject p = store.person(pid);
+                          JSONArray c = Contacts.candidates(this, p);
+                          JSONObject only = null;
+                          int strong = 0;
+                          for (int k = 0; k < c.length(); k++)
+                            if (c.getJSONObject(k).optBoolean("strong")) {
+                              strong++;
+                              only = c.getJSONObject(k);
+                            }
+                          if (strong != 1) {
+                            skipped.add(p.optString("name") + (strong == 0 ? "（一致する連絡先なし）" : "（候補が" + strong + "件）"));
+                            continue;
+                          }
+                          Contacts.mergeInto(this, p, only.getLong("rawId"), photo);
+                          store.put(p);
+                          done++;
+                        }
+                        event("toast", done + "件を統合しました");
+                        if (!skipped.isEmpty())
+                          event("report", "次の名刺は連絡先を自動で選べないため、統合しませんでした。重複の画面から1件ずつ選んでください。\n" + String.join("\n", skipped));
                       }));
           break;
         }
@@ -1091,6 +1184,22 @@ public class MainActivity extends Activity {
               event("review", id);
             });
         break;
+      case "logoAll":
+      case "logoOne":
+        {
+          // Cut company logos out of card images (one Gemini call per company).
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          List<String> ids = action.equals("logoOne") ? Collections.singletonList(id) : Logo.pick(store);
+          if (ids.isEmpty()) {
+            event("toast", "ロゴを探す会社はありません（ロゴのある会社・試した会社は除きます）");
+            break;
+          }
+          Pipeline.enqueue(store, ids, action.equals("logoOne") ? "relogo" : "logo");
+          refresh();
+          startProcessing();
+          event("toast", ids.size() + "社のロゴを名刺から探します（バックグラウンド）");
+          break;
+        }
       case "recognizeAll":
         {
           if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");

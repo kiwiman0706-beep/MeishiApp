@@ -20,6 +20,7 @@ const keys = (name) => {
 const prompts = {
   card: { prompt: literal("CARD_PROMPT"), keys: keys("CARD_KEYS") },
   nenga: { prompt: literal("NENGA_PROMPT"), keys: keys("NENGA_KEYS") },
+  logo: { prompt: literal("LOGO_PROMPT"), keys: keys("LOGO_KEYS") },
 };
 fs.writeFileSync(path.resolve(__dirname, "../lib/prompts.json"), JSON.stringify(prompts, null, 2));
 console.log("UI and prompts synced from android/");

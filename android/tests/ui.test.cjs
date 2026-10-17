@@ -223,12 +223,25 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.screenshot({ path: path.join(screenshotDir, "10-duplicates.png") });
   await page.getByRole("button", { name: "1人にまとめる" }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.deepEqual(calls.at(-1), { action: "merge", id: "demo-3", sourceId: "demo-1" });
-  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  assert.deepEqual(calls.at(-1), { action: "merge", id: "demo-3", sourceId: "demo-1", stay: true });
+  // After an action the duplicate sheet comes back (no jump to the home screen).
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  await page.getByRole("heading", { name: /重複の可能性/ }).waitFor();
+  assert.equal(await page.evaluate(() => route), "home");
   await page.getByRole("button", { name: "別人", exact: true }).click();
   calls = await page.evaluate(() => window.calls);
   assert.equal(calls.at(-1).action, "notDuplicate");
-  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  await page.getByRole("heading", { name: /重複の可能性/ }).waitFor();
+  // Pick several and merge them at once.
+  await page.getByRole("button", { name: "すべて選択" }).click();
+  await page.getByRole("button", { name: /選択した 2件を統合/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "mergeBatch", pairs: [["demo-3", "demo-1"]], contacts: ["demo-2"] });
+  // A task: the sheet returns when the busy indicator clears; a report stays on screen instead.
+  await page.evaluate((d) => { onNative({ type: "busy", data: "まとめて統合中" }); onNative({ type: "state", data: d }); onNative({ type: "busy", data: "" }); }, demo);
+  await page.getByRole("heading", { name: /重複の可能性/ }).waitFor();
+  await page.screenshot({ path: path.join(screenshotDir, "10a-duplicates-bulk.png") });
   await page.getByRole("button", { name: "問題なし" }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "dismissContactDup", id: "demo-2" });
@@ -254,6 +267,35 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.evaluate(() => onNative({ type: "contactCandidates", data: { id: "demo-2", mode: "delete", list: [] } }));
   assert(await page.getByText("一致する連絡先が見つかりません").isVisible());
   await page.evaluate(() => closeModal());
+  // Company view: one tile per company (spelling variants together), logo or initial.
+  await page.evaluate((d) => {
+    d.people.push({ ...d.people[0], id: "demo-4", name: "鈴木 次郎", company: "(株)サンプルデザイン", mobile: "", email: "", contactRawId: undefined, logo: "logo.jpg", pages: [{ file: "card4.jpg", name: "card" }], created: 1, notes: [], audio: [] });
+    d.people.push({ ...d.people[0], id: "demo-5", name: "高橋 三郎", company: "ロゴなし工業株式会社", mobile: "", email: "", contactRawId: undefined, pages: [{ file: "card.jpg", name: "card" }], created: 2, notes: [], audio: [] });
+    onNative({ type: "state", data: d });
+    go("home");
+    setLayout("company");
+  }, demo);
+  const tile = page.locator(".cotile", { hasText: "サンプルデザイン" });
+  assert.equal(await tile.count(), 1);
+  assert(await tile.getByText("2人").isVisible());
+  assert.equal(await tile.locator("img").count(), 1);
+  assert(await page.getByText(/ロゴの無い会社 \d+社/).isVisible());
+  for (const w of [320, 768]) {
+    await page.setViewportSize({ width: w, height: 800 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "company view fits " + w);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: path.join(screenshotDir, "17-companies.png") });
+  await tile.click();
+  assert.equal(await page.locator(".person").count(), 2);
+  await page.getByRole("button", { name: /名刺から切り出し直す/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.equal(calls.at(-1).action, "logoOne");
+  await page.screenshot({ path: path.join(screenshotDir, "18-company.png") });
+  await page.evaluate(() => handleBack());
+  assert.equal(await page.locator(".cotile").count() > 1, true);
+  await page.evaluate(() => setLayout("cards"));
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
   // Deleting a registered person offers removing the Google contact too.
   await page.evaluate(() => { closeModal(); openPerson("demo-1"); deletePerson(); });
   await page.getByRole("button", { name: /名刺と連絡先を削除/ }).click();

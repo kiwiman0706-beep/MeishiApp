@@ -74,7 +74,7 @@ public final class Pipeline {
   }
 
   public static class Summary {
-    int read, registered, updated, failed, review, nenga;
+    int read, registered, updated, failed, review, nenga, logos, noLogo;
     boolean halted;
     final List<String> errors = new ArrayList<>();
 
@@ -82,6 +82,8 @@ public final class Pipeline {
       StringBuilder b = new StringBuilder();
       if (read > 0) b.append("読み取り ").append(read).append("件");
       if (nenga > 0) b.append(b.length() > 0 ? " / " : "").append("年賀状 ").append(nenga).append("通");
+      if (logos > 0) b.append(b.length() > 0 ? " / " : "").append("ロゴ ").append(logos).append("社");
+      if (noLogo > 0) b.append(b.length() > 0 ? " / " : "").append("ロゴが見つからない ").append(noLogo).append("社");
       if (registered > 0) b.append(b.length() > 0 ? " / " : "").append("連絡先に登録 ").append(registered).append("件");
       if (updated > 0) b.append(b.length() > 0 ? " / " : "").append("連絡先を更新 ").append(updated).append("件");
       if (review > 0) b.append(b.length() > 0 ? " / " : "").append("要確認 ").append(review).append("件");
@@ -133,6 +135,20 @@ public final class Pipeline {
           if (g == null) g = new Gemini(c);
           Nenga.file(s, id, g.recognizeNenga(next));
           sum.nenga++;
+        } else if (step.equals("logo") || step.equals("relogo")) {
+          // relogo: asked again for this card, so it replaces the logo it shares with its company.
+          progress.update("会社ロゴを切り出し中（残り" + left + "件）" + label);
+          if (g == null) g = new Gemini(c);
+          String logo = Logo.crop(s, next, g.logoBox(next).optString("box"));
+          JSONObject p = s.person(id);
+          String old = step.equals("relogo") ? p.optString("logo") : "";
+          p.remove("queue");
+          p.put("logoTried", true);
+          s.put(p);
+          if (!logo.isEmpty()) {
+            Logo.share(s, id, logo, old);
+            sum.logos++;
+          } else sum.noLogo++;
         } else if (step.equals("contact")) {
           progress.update("連絡先に登録中 " + label);
           JSONObject p = s.person(id);

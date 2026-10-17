@@ -115,6 +115,17 @@ function imaging(base) {
       if (s < 1) img = img.resize({ width: Math.round(width * s), height: Math.round(height * s), quality: "best" });
       return img.toJPEG(85);
     },
+    // rectOf(width, height) → { x, y, width, height } or null; the cut-out is downscaled to max.
+    crop: async (buf, rectOf, max) => {
+      const img = nativeImage.createFromBuffer(buf);
+      const { width, height } = img.getSize();
+      const r = rectOf(width, height);
+      if (!r || r.width < 8 || r.height < 8) return null;
+      let out = img.crop(r);
+      const s = Math.min(1, max / Math.max(r.width, r.height));
+      if (s < 1) out = out.resize({ width: Math.round(r.width * s), height: Math.round(r.height * s), quality: "best" });
+      return out.toJPEG(92);
+    },
     pdfPages: async (buf, max) => {
       const win = await pdfWindow(base);
       return new Promise((ok, ng) => {

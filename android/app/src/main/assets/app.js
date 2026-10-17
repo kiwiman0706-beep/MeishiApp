@@ -119,11 +119,13 @@ function toast(t) {
 }
 function modal(html, viewer = false) {
   modalOpen = true;
+  dupOpen = false;
   $("modal").innerHTML =
     `<div class="sheetback ${viewer ? "viewer" : ""}" onclick="if(event.target===this)closeModal()"><div class="sheet"><button class="close" onclick="closeModal()" aria-label="閉じる">${icon("close")}</button>${html}</div></div>`;
 }
 function closeModal() {
   modalOpen = false;
+  dupOpen = false;
   $("modal").innerHTML = "";
 }
 function report(t) {
@@ -145,11 +147,13 @@ function go(r) {
   editNoteId = "";
   settingsDraft = null;
   route = r;
+  dupOrigin = dupReturn = false;
   closeModal();
   render();
   window.scrollTo(0, 0);
 }
 function openPerson(id) {
+  dupOrigin = dupReturn = false;
   selected = id;
   draft = null;
   noteDraft = "";
@@ -237,7 +241,77 @@ function listContent() {
   if (layout === "map") return mapView(a);
   if (layout === "table")
     return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" onclick="openPerson('${p.id}')"><td>${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
+  if (layout === "company") return companyView(a);
+  return personCards(a);
+}
+function personCards(a) {
   return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
+}
+// ---- Companies ---------------------------------------------------------------------------
+// Same company however the card spells it (Company.java has the same rule).
+const CORP_FORMS =
+  /株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|npo法人|医療法人社団|医療法人財団|医療法人|社会福祉法人|学校法人|宗教法人|独立行政法人|\(株\)|\(有\)|\(同\)|\(社\)|\(財\)/g;
+function companyKey(p) {
+  let c = p.company;
+  if (!String(c || "").trim() && p.kind === "shop") c = p.name;
+  return String(c || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(CORP_FORMS, "")
+    .replace(/\b(co\.?,?\s*ltd\.?|inc\.?|corp\.?|corporation|llc|ltd\.?|k\.k\.)/g, "")
+    .replace(/[\s・.,'"()\-]/g, "");
+}
+let companyOpen = "",
+  companyList = [];
+function companyGroups(a) {
+  const m = new Map();
+  for (const p of a) {
+    const k = companyKey(p);
+    if (!m.has(k)) m.set(k, { key: k, people: [], names: {} });
+    const g = m.get(k);
+    g.people.push(p);
+    const n = String(p.company || (p.kind === "shop" ? p.name : "") || "").trim();
+    if (n) g.names[n] = (g.names[n] || 0) + 1;
+  }
+  const out = [...m.values()].map((g) => {
+    const name = Object.entries(g.names).sort((x, y) => y[1] - x[1])[0]?.[0] || "会社・組織なし";
+    const withLogo = g.people.filter((p) => p.logo).sort((x, y) => y.updated - x.updated)[0];
+    return { ...g, name, logo: withLogo?.logo || "", none: !g.key };
+  });
+  const byName = sort === "name" || sort === "company";
+  return out.sort((x, y) =>
+    x.none !== y.none ? (x.none ? 1 : -1) : byName ? x.name.localeCompare(y.name, "ja") : y.people.length - x.people.length || x.name.localeCompare(y.name, "ja"),
+  );
+}
+function companyMark(g, big = false) {
+  if (g.logo) return `<div class="cologo${big ? " big" : ""}"><img loading="lazy" src="${img(g.logo)}" alt="${esc(g.name)}のロゴ"></div>`;
+  let h = 0;
+  for (const ch of g.name) h = (h * 31 + ch.codePointAt(0)) % 360;
+  const letter = g.name.replace(/^(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|\(株\)|㈱)\s*/, "").slice(0, 1);
+  return `<div class="cologo${big ? " big" : ""} letter" style="background:hsl(${h} 32% 92%);color:hsl(${h} 40% 30%)">${esc(letter || "？")}</div>`;
+}
+function companyView(a) {
+  companyList = companyGroups(a);
+  const open = companyOpen && companyList.find((g) => g.key === companyOpen);
+  if (open) {
+    const source = open.people.filter((p) => p.pages?.length).sort((x, y) => y.created - x.created)[0];
+    const cut =
+      source && can("gemini") && !open.none
+        ? `<button class="outline" onclick="call('logoOne',{id:'${source.id}'})">${icon("spark")}${open.logo ? "名刺から切り出し直す" : "名刺からロゴを切り出す"}</button>`
+        : "";
+    return `<div class="cohead">${companyMark(open, true)}<div><button class="link" onclick="companyOpen='';updateList()">${icon("back")}会社一覧</button><h2>${esc(open.name)}</h2><small class="caption">${open.people.length}人</small></div></div>${cut ? `<div class="row gap">${cut}</div>` : ""}${personCards(open.people)}`;
+  }
+  const missing = companyList.filter((g) => !g.none && !g.logo && g.people.some((p) => p.pages?.length)).length;
+  const tip =
+    missing && can("gemini")
+      ? `<button class="setup" onclick="if(confirm('ロゴの無い${missing}社について、名刺の画像からGeminiでロゴを探して切り出します（1社1回・1円以下の目安）。続けますか？'))call('logoAll')">${icon("spark")}<span><b>ロゴの無い会社 ${missing}社</b><small>名刺の画像から会社ロゴを切り出す</small></span>${icon("next")}</button>`
+      : "";
+  return `${tip}<div class="cogrid">${companyList
+    .map(
+      (g, i) =>
+        `<button class="cotile" onclick="companyOpen=companyList[${i}].key;updateList();window.scrollTo(0,0)">${companyMark(g)}<b class="ell">${esc(g.name)}</b><small>${g.people.length}人</small></button>`,
+    )
+    .join("")}</div>`;
 }
 function home() {
   const count = (s) => state.people.filter((p) => p.status === s).length;
@@ -279,6 +353,7 @@ function home() {
     ["table", "表", "table"],
     ["calendar", "カレンダー", "clock"],
     ["map", "地図", "map"],
+    ["company", "会社", "card"],
   ]
     .map(
       ([v, l, ic]) =>
@@ -303,6 +378,7 @@ function updateList() {
 }
 function setLayout(v) {
   layout = v;
+  companyOpen = "";
   if (v === "map") call("mapOpen");
   render();
 }
@@ -535,6 +611,7 @@ function detailMenu() {
       p.status === "confirmed" && !p.contactRawId && can("contacts") ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
       menuRow("download", "書類・手紙を添付", "契約書・案内状・手紙などを撮影・PDFで", "attachSheet()"),
       menuRow("user", "人物写真・会社ロゴ", p.portrait || p.logo ? "登録済み" : "画像検索して登録", "assetSheet()"),
+      p.pages.length && can("gemini") ? menuRow("spark", "名刺から会社ロゴを切り出す", "同じ会社でロゴの無い人にも使います", "closeModal();call('logoOne',{id:selected})") : "",
       state.people.length > 1 ? menuRow("link", "別の名刺と統合", "同じ人の名刺をまとめる", "mergeSheet()") : "",
       p.rawText ? menuRow("list", "読み取った全文を見る", "", "report(getPerson().rawText)") : "",
       menuRow("trash", "この名刺を削除", "Google連絡先は削除されません", "closeModal();deletePerson()", "dangerrow"),
@@ -594,9 +671,11 @@ function reread() {
   }
   call("reread", { id: selected });
 }
-function unlinkContact(id) {
-  if (confirm("このアプリが追加した連絡先を削除します。もともとあった連絡先はそのまま残ります。続けますか？"))
+function unlinkContact(id, fromDup) {
+  if (confirm("このアプリが追加した連絡先を削除します。もともとあった連絡先はそのまま残ります。続けますか？")) {
+    if (fromDup) dupAgain();
     call("unlinkContact", { id });
+  } else if (fromDup) dupSheet();
 }
 
 // ---- Review / edit ------------------------------------------------------------
@@ -734,29 +813,95 @@ function dupes() {
   for (const p of state.people) if (p.contactDuplicate) out.push({ contact: p.id });
   return out;
 }
+// The duplicate sheet stays the place to work through duplicates: after an action it comes
+// back (dupReturn) instead of leaving the person on the home screen.
+let dupOrigin = false,
+  dupOpen = false,
+  dupReturn = false,
+  busyNow = false;
+const dupPick = new Set();
+function dupKey(d, byId) {
+  if (d.contact) return "c:" + d.contact;
+  const [older, newer] = [byId[d.a], byId[d.b]].sort((x, y) => x.created - y.created);
+  return "p:" + newer.id + ":" + older.id;
+}
 function dupSheet() {
+  dupOrigin = true;
   const byId = Object.fromEntries(state.people.map((p) => [p.id, p]));
   const who = (p) =>
     `<button class="duprow" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img src="${img(p.pages[0].file)}" alt="">` : `<span class="initial">${esc(title(p).slice(0, 1))}</span>`}<span><b>${esc(title(p))}</b><small>${esc(company(p))}${p.contactRawId ? " ・ 連絡先登録済み" : ""}<br>追加 ${esc(date(p.created))}</small></span></button>`;
-  const items = dupes()
-    .map((d) => {
+  const list = dupes();
+  const keys = list.map((d) => dupKey(d, byId));
+  for (const k of [...dupPick]) if (!keys.includes(k)) dupPick.delete(k);
+  const check = (k) =>
+    `<label class="dupcheck"><input type="checkbox" ${dupPick.has(k) ? "checked" : ""} onchange="dupToggle('${k}',this.checked)">選択</label>`;
+  const items = list
+    .map((d, i) => {
       if (d.contact) {
         const p = byId[d.contact];
-        return `<div class="dupitem">${who(p)}<p class="caption">Google連絡先に既存の「${esc(p.contactDuplicate)}」があります（同じ電話・メール）。</p>${contactDupButtons(p.id)}</div>`;
+        return `<div class="dupitem">${check(keys[i])}${who(p)}<p class="caption">Google連絡先に既存の「${esc(p.contactDuplicate)}」があります。</p>${contactDupButtons(p.id)}</div>`;
       }
       // Keep the newer card as the base: it carries the current title and contact details.
       const [older, newer] = [byId[d.a], byId[d.b]].sort((x, y) => x.created - y.created);
-      return `<div class="dupitem">${who(newer)}${who(older)}<p class="caption">${[...d.why].join("・")}</p><div class="row"><button class="primary" onclick="mergePair('${newer.id}','${older.id}')">1人にまとめる</button><button class="noflex" onclick="call('notDuplicate',{id:'${d.a}',other:'${d.b}'});closeModal()">別人</button></div></div>`;
+      return `<div class="dupitem">${check(keys[i])}${who(newer)}${who(older)}<p class="caption">${[...d.why].join("・")}</p><div class="row"><button class="primary" onclick="mergePair('${newer.id}','${older.id}')">1人にまとめる</button><button class="noflex" onclick="dupAgain();call('notDuplicate',{id:'${d.a}',other:'${d.b}'});closeModal()">別人</button></div></div>`;
     })
     .join("");
+  const all = list.length && dupPick.size === list.length;
   modal(
-    `<h2>${icon("link")} 重複の可能性</h2><p class="caption">「1人にまとめる」は新しい名刺の内容を優先し、古い名刺の画像・メモ・録音を引き継ぎます。Google連絡先も1件にまとめます。</p>${items || '<p class="caption">重複の可能性はありません。</p>'}`,
+    `<h2>${icon("link")} 重複の可能性 <small>${list.length}件</small></h2><p class="caption">「1人にまとめる」は新しい名刺の内容を優先し、古い名刺の画像・メモ・録音を引き継ぎます。Google連絡先も1件にまとめます。</p>${
+      list.length > 1
+        ? `<div class="row gap"><button class="outline" onclick="dupSelectAll(${!all})">${all ? "選択を解除" : "すべて選択"}</button></div>`
+        : ""
+    }${items || '<p class="caption">重複の可能性はありません。</p>'}${
+      list.length
+        ? `<div class="dupbulk"><button class="primary full" ${dupPick.size ? "" : "disabled"} onclick="dupBulk()">${icon("link")}選択した ${dupPick.size}件を統合</button><small class="caption">連絡先の重複は、同じ人と分かる既存の連絡先が1件だけのときに統合します（それ以外は1件ずつ選んでください）。</small></div>`
+        : ""
+    }`,
   );
+  dupOpen = true;
+}
+// Redraws the open sheet in place (new state, a checkbox) without losing the scroll position.
+function dupRedraw() {
+  const keep = $("modal").querySelector(".sheet")?.scrollTop || 0;
+  dupSheet();
+  const sheet = $("modal").querySelector(".sheet");
+  if (sheet) sheet.scrollTop = keep;
+}
+function dupToggle(k, on) {
+  on ? dupPick.add(k) : dupPick.delete(k);
+  dupRedraw();
+}
+function dupSelectAll(on) {
+  const byId = Object.fromEntries(state.people.map((p) => [p.id, p]));
+  dupPick.clear();
+  if (on) for (const d of dupes()) dupPick.add(dupKey(d, byId));
+  dupSheet();
+}
+function dupBulk() {
+  const keys = [...dupPick];
+  if (!keys.length || !confirm(`選択した${keys.length}件を統合しますか？`)) return;
+  const pairs = keys.filter((k) => k.startsWith("p:")).map((k) => k.slice(2).split(":"));
+  const contacts = keys.filter((k) => k.startsWith("c:")).map((k) => k.slice(2));
+  dupPick.clear();
+  dupAgain();
+  closeModal();
+  call("mergeBatch", { pairs, contacts });
+}
+// Called right before an action started from the duplicate sheet.
+function dupAgain() {
+  dupReturn = dupOrigin;
+}
+function dupBack() {
+  if (!dupReturn || busyNow) return;
+  dupReturn = false;
+  if (dupOpen || route !== "home") return;
+  if (dupes().length) dupSheet();
+  else toast("重複はすべて片付きました");
 }
 // A card whose new Google contact matches one that was already there: merge into it, delete
 // the old one, delete the one just added, or keep both.
 function contactDupButtons(id) {
-  return `<div class="row gap"><button class="primary" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'merge'})">${icon("link")}既存と統合</button><button class="outline" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'delete'})">既存を削除</button></div><div class="row gap"><button class="outline" onclick="closeModal();unlinkContact('${id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${id}'});closeModal()">問題なし</button></div>`;
+  return `<div class="row gap"><button class="primary" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'merge'})">${icon("link")}既存と統合</button><button class="outline" onclick="closeModal();call('contactCandidates',{id:'${id}',mode:'delete'})">既存を削除</button></div><div class="row gap"><button class="outline" onclick="closeModal();unlinkContact('${id}',true)">追加した方を削除</button><button class="noflex" onclick="dupAgain();call('dismissContactDup',{id:'${id}'});closeModal()">問題なし</button></div>`;
 }
 // The phone's contacts that match the card; the person picks which one (a company's main
 // number can match colleagues too).
@@ -768,7 +913,7 @@ function contactCandidateSheet({ id, mode, list }) {
   const rows = list
     .map(
       (c, i) =>
-        `<div class="dupitem"><p><b>${esc(c.name)}</b><br><small class="caption">${esc(c.account)} ・ 一致：${esc(c.why)}${c.photo ? " ・ 写真あり" : ""}</small></p>${c.detail ? `<p class="caption">${esc(c.detail)}</p>` : ""}<button class="${merge ? "primary" : "danger"} full" onclick="contactCandidatePick(${i},'${esc(id)}','${merge ? "merge" : "delete"}')">${merge ? `${icon("link")}この連絡先と統合` : `${icon("trash")}この連絡先を削除`}</button></div>`,
+        `<div class="dupitem"><p><b>${esc(c.name)}</b><br><small class="caption">${esc(c.account)} ・ 一致：${esc(c.why)}${c.photo ? " ・ 写真あり" : ""}</small></p>${c.strong === false ? `<p class="caption">会社の電話だけが同じです（同じ会社の別の人かもしれません）。</p>` : ""}${c.detail ? `<p class="caption">${esc(c.detail)}</p>` : ""}<button class="${merge ? "primary" : "danger"} full" onclick="contactCandidatePick(${i},'${esc(id)}','${merge ? "merge" : "delete"}')">${merge ? `${icon("link")}この連絡先と統合` : `${icon("trash")}この連絡先を削除`}</button></div>`,
     )
     .join("");
   modal(
@@ -776,7 +921,7 @@ function contactCandidateSheet({ id, mode, list }) {
       merge
         ? `「${esc(title(p))}」の名刺の電話・メール・会社などを、選んだ連絡先に書き足します。その連絡先にある情報は消しません（写真が無ければ名刺の画像を入れます）。このアプリが追加した方の連絡先は削除し、名刺は選んだ連絡先とつながります。`
         : "選んだ連絡先をGoogle連絡先から削除します。Googleコンタクトのゴミ箱に30日間残ります。このアプリが追加した連絡先は残ります。"
-    }</p>${rows || '<p class="caption">一致する連絡先が見つかりません。すでに削除・統合済みかもしれません。</p>'}${rows ? "" : `<button class="outline full gap" onclick="call('dismissContactDup',{id:'${esc(id)}'});closeModal()">この表示を消す</button>`}`,
+    }</p>${rows || '<p class="caption">一致する連絡先が見つかりません。すでに削除・統合済みかもしれません。</p>'}${dupOrigin ? `<button class="outline full gap" onclick="dupSheet()">${icon("back")}重複の一覧に戻る</button>` : ""}${rows ? "" : `<button class="outline full gap" onclick="call('dismissContactDup',{id:'${esc(id)}'});closeModal()">この表示を消す</button>`}`,
   );
 }
 function contactCandidatePick(i, id, mode) {
@@ -787,13 +932,14 @@ function contactCandidatePick(i, id, mode) {
       : confirm(`「${c.name}」をGoogle連絡先から削除しますか？`);
   if (!ok) return;
   closeModal();
+  dupAgain();
   call(mode === "merge" ? "contactMerge" : "contactDeleteExisting", { id, rawId: c.rawId });
 }
 function mergePair(target, source) {
   if (!confirm("2枚の名刺を1人にまとめますか？")) return;
   closeModal();
-  selected = target;
-  call("merge", { id: target, sourceId: source });
+  dupAgain();
+  call("merge", { id: target, sourceId: source, stay: true });
 }
 // Page tools (rotate / reorder / remove / share) live in the viewer, not under every image.
 function viewImage(i, readOnly = false) {
@@ -1079,7 +1225,7 @@ function menuPage() {
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.11.1 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.12.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -1131,7 +1277,14 @@ window.handleBack = () => {
     return;
   }
   if (modalOpen) {
-    closeModal();
+    // Sheets opened from the duplicate list go back to it.
+    if (dupOrigin && !dupOpen && route === "home") dupSheet();
+    else closeModal();
+    return;
+  }
+  if (route === "home" && layout === "company" && companyOpen) {
+    companyOpen = "";
+    updateList();
     return;
   }
   if (route === "edit") {
@@ -1167,12 +1320,18 @@ window.onNative = ({ type, data }) => {
     }
     if (route === "edit" && !getPerson()) draft = null;
     render();
+    if (dupOpen) dupRedraw();
+    setTimeout(dupBack);
   } else if (type === "busy") {
+    busyNow = !!data;
+    if (!data) setTimeout(dupBack);
     $("busy").hidden = !data;
     $("busytext").textContent = data;
   } else if (type === "toast") toast(data);
-  else if (type === "error") report(data);
-  else if (type === "report") report(data);
+  else if (type === "error" || type === "report") {
+    dupReturn = false; // the message stays on screen instead of the duplicate sheet
+    report(data);
+  }
   else if (type === "open") {
     // Inside a background task the new person only arrives with the next state push.
     if (editOnOpen && state.people.some((p) => p.id === data)) {

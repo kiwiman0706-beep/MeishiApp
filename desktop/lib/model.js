@@ -149,4 +149,47 @@ function nengaCsv(people, year) {
   return out;
 }
 
-module.exports = { empty, edit, merge, applyResult, INBOX, NENGA_KINDS, matchSender, season, greeting, hasGreeting, today, csv, nengaCsv };
+// ---- companies and logos (Company.java / Logo.java) -------------------------------------
+const FORMS =
+  /株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|npo法人|医療法人社団|医療法人財団|医療法人|社会福祉法人|学校法人|宗教法人|独立行政法人|\(株\)|\(有\)|\(同\)|\(社\)|\(財\)/g;
+function companyKey(p) {
+  let c = p.company;
+  if (!String(c || "").trim() && p.kind === "shop") c = p.name;
+  return nfkc(c)
+    .toLowerCase()
+    .replace(FORMS, "")
+    .replace(/\b(co\.?,?\s*ltd\.?|inc\.?|corp\.?|corporation|llc|ltd\.?|k\.k\.)/g, "")
+    .replace(/[\s・.,'"()\-]/g, "");
+}
+
+// "ymin,xmin,ymax,xmax" on a 0–1000 grid → { x, y, width, height } in pixels with a margin, or null.
+function logoRect(text, w, h) {
+  const v = String(text || "").replace(/[[\]\s]/g, "").split(",");
+  if (v.length !== 4 || v.some((x) => !/^-?\d+$/.test(x))) return null;
+  const [y0, x0, y1, x1] = v.map((x) => Math.max(0, Math.min(1000, +x)));
+  const bh = y1 - y0, bw = x1 - x0;
+  if (bh < 15 || bw < 15 || bh * bw > 600000) return null;
+  const pad = Math.floor(Math.max(bh, bw) / 12);
+  const t = Math.max(0, y0 - pad), l = Math.max(0, x0 - pad), b = Math.min(1000, y1 + pad), r = Math.min(1000, x1 + pad);
+  const x = Math.floor((l * w) / 1000), y = Math.floor((t * h) / 1000);
+  return { x, y, width: Math.floor((r * w) / 1000) - x, height: Math.floor((b * h) / 1000) - y };
+}
+
+// One card per company without a logo: the newest with an image, not tried before.
+function logoPicks(people) {
+  const best = new Map(), has = new Set();
+  for (const p of people) {
+    if (p.kind === INBOX) continue;
+    const k = companyKey(p);
+    if (!k) continue;
+    if (p.logo) has.add(k);
+    if (!(p.pages || []).length || p.logoTried || p.queue) continue;
+    if (!best.has(k) || p.created > best.get(k).created) best.set(k, p);
+  }
+  return [...best].filter(([k]) => !has.has(k)).map(([, p]) => p.id);
+}
+
+module.exports = {
+  companyKey,
+  logoRect,
+  logoPicks, empty, edit, merge, applyResult, INBOX, NENGA_KINDS, matchSender, season, greeting, hasGreeting, today, csv, nengaCsv };

@@ -41,37 +41,16 @@ public final class Contacts {
     }
   }
 
+  // The name of a contact already on the phone that is likely the same person, or "".
+  // Only personal identifiers count (mobile number, e-mail, the same name): an office number
+  // printed on everyone's card at that company would flag colleagues.
   public static String duplicate(Context c, JSONObject p) {
-    String phone = p.optString("mobile").isEmpty() ? p.optString("phone") : p.optString("mobile");
-    if (!phone.isEmpty()) {
-      String first = phone.split("[\n,;]")[0].replaceAll("[^0-9+]", "");
-      if (!first.isEmpty())
-        try (Cursor q =
-            c.getContentResolver()
-                .query(
-                    Uri.withAppendedPath(
-                        ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(first)),
-                    new String[] {ContactsContract.PhoneLookup.DISPLAY_NAME},
-                    null,
-                    null,
-                    null)) {
-          if (q != null && q.moveToFirst()) return q.getString(0);
-        } catch (Exception ignored) {
-        }
+    try {
+      JSONArray a = candidates(c, p);
+      for (int i = 0; i < a.length(); i++)
+        if (a.getJSONObject(i).optBoolean("strong")) return a.getJSONObject(i).getString("name");
+    } catch (Exception ignored) {
     }
-    String email = p.optString("email").split("[\n,;]")[0].trim();
-    if (!email.isEmpty())
-      try (Cursor q =
-          c.getContentResolver()
-              .query(
-                  Email.CONTENT_URI,
-                  new String[] {Email.DISPLAY_NAME},
-                  Email.ADDRESS + "=?",
-                  new String[] {email},
-                  null)) {
-        if (q != null && q.moveToFirst()) return q.getString(0);
-      } catch (Exception ignored) {
-      }
     return "";
   }
 
@@ -286,6 +265,7 @@ public final class Contacts {
     for (String v : values(p, "mobile", "phone")) {
       String n = v.replaceAll("[^0-9+]", "");
       if (n.length() < 5) continue;
+      String reason = personal(p, v) ? "携帯" : "会社の電話";
       try (Cursor q =
           r.query(
               Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(n)),
@@ -293,7 +273,7 @@ public final class Contacts {
               null,
               null,
               null)) {
-        while (q != null && q.moveToNext()) why.computeIfAbsent(q.getLong(0), k -> new LinkedHashSet<>()).add("電話");
+        while (q != null && q.moveToNext()) why.computeIfAbsent(q.getLong(0), k -> new LinkedHashSet<>()).add(reason);
       } catch (Exception ignored) {
       }
     }
@@ -308,7 +288,7 @@ public final class Contacts {
         while (q != null && q.moveToNext()) why.computeIfAbsent(q.getLong(0), k -> new LinkedHashSet<>()).add("メール");
       } catch (Exception ignored) {
       }
-    String name = p.optString("name").replaceAll("[\\s　]", "");
+    String name = bare(p.optString("name"));
     if (name.length() >= 2)
       try (Cursor q =
           r.query(
@@ -321,6 +301,7 @@ public final class Contacts {
       } catch (Exception ignored) {
       }
     JSONArray out = new JSONArray();
+    List<JSONObject> list = new ArrayList<>();
     if (why.isEmpty()) return out;
     Set<Long> mine = ours(c);
     StringBuilder in = new StringBuilder();
@@ -340,17 +321,37 @@ public final class Contacts {
       while (q != null && q.moveToNext()) {
         long raw = q.getLong(0);
         if (mine.contains(raw)) continue;
+        Set<String> reasons = new LinkedHashSet<>(why.get(q.getLong(1)));
+        String shown = q.isNull(3) ? "" : q.getString(3);
+        // The aggregate matched on the name; this raw contact must carry it too.
+        if (reasons.contains("氏名") && !bare(shown).equals(name)) reasons.remove("氏名");
+        if (reasons.isEmpty()) continue;
+        boolean strong = reasons.contains("携帯") || reasons.contains("メール") || reasons.contains("氏名");
         JSONObject x =
             new JSONObject()
                 .put("rawId", raw)
-                .put("name", q.isNull(3) ? "（名前なし）" : q.getString(3))
+                .put("name", shown.isEmpty() ? "（名前なし）" : shown)
                 .put("account", q.isNull(2) ? "この端末" : q.getString(2))
-                .put("why", String.join("・", why.get(q.getLong(1))));
+                .put("why", String.join("・", reasons))
+                .put("strong", strong);
         describe(c, raw, x);
-        out.put(x);
+        list.add(x);
       }
     }
+    // Same person first; office-number-only matches (likely colleagues) last.
+    Collections.sort(list, (x, y) -> Boolean.compare(y.optBoolean("strong"), x.optBoolean("strong")));
+    for (JSONObject x : list) out.put(x);
     return out;
+  }
+
+  static String bare(String s) {
+    return java.text.Normalizer.normalize(s == null ? "" : s, java.text.Normalizer.Form.NFKC).replaceAll("[\\s・]", "").toLowerCase(Locale.ROOT);
+  }
+
+  // Mobile numbers are personal; the rest (office, main line, fax) can be shared.
+  static boolean personal(JSONObject p, String number) {
+    if (values(p, "mobile").contains(number)) return true;
+    return digits(number).matches("0[789]0\\d{8}");
   }
 
   // Company, numbers, addresses and whether it has a photo, so the person can tell contacts apart.
