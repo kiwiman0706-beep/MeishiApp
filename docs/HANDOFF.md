@@ -1,5 +1,14 @@
 # 開発引き継ぎ
 
+## デスクトップ版 0.1.0（Windows / Mac）
+
+- `desktop/`：Electron。DBを持たず、Theta Vault フォルダ（Googleドライブ for desktop の同期フォルダ）を直接読み書きする。端末固有の項目（`Sync.LOCAL` 相当）は userData の `overlay.json`。
+- 画面は Android の `assets/` をそのまま使う（`npm run sync-ui` で `desktop/ui/` へコピー。Geminiのプロンプトも `Gemini.java` から `lib/prompts.json` に抽出）。UIは `state.platform` / `state.caps` を見て、使えない操作（連絡先・カレンダー登録・撮影・録音・Drive・ZIP）を出さない。
+- ブリッジは HTTP：`127.0.0.1:47860` で配信し、`/api/call`（UI→）と `/api/events`（SSE、→UI）。合言葉（token）は初回 `?token=` → Cookie。Hostヘッダ検査でDNSリバインディングを防ぐ。同じURLをDeskHatchの「Webページ」ドロワーに入れて使う。
+- 画像はElectronの `nativeImage`、PDFは隠しウィンドウの pdf.js（`assets/render.html`。CMap・標準フォントもサーバーから配信）。
+- `lib/vault-codec.js` は `VaultCodec.java` の移植。`CrossPlatformTest`（Android）と `vault-codec.test.js`（Node）が互いの出力を読み合う。
+- 未実装：Google連絡先・カレンダー（People API / Calendar API のOAuthが要る。今はスマホ版で）、ScanSnapフォルダの自動監視（今は手動の一括取り込み）、インストーラー形式と署名。
+
 ## 0.10.0での変更（Theta Vault）
 
 - `VaultCodec`：人物レコード ⇄ Markdown。frontmatterは snakeyaml-engine で読み書き。管理外のfrontmatter項目は `vaultExtra`、管理外の本文は `vaultFree` に保持して書き戻す。メモは `^id`（Obsidianのブロック参照）で同一性を保つ。`rev` は本文の指紋で、`editedOutside` が真ならObsidian等での編集と判断。

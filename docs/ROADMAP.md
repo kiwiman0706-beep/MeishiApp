@@ -31,6 +31,10 @@ deskhatch plugin  ← desktop/ をDeskHatchのドロワーとして登録
 
 ## フェーズ3：Windows / Mac版（DeskHatchプラグイン）
 
+**デスクトップ版0.1.0で実装済み**（`desktop/README.md`）：Electron単体アプリ＋トレイ常駐、Vaultフォルダ直結、ローカルHTTPでDeskHatchの「Webページ」ドロワーに表示。
+残り：Google連絡先・カレンダーのPC側登録（People API）、ScanSnapフォルダの自動監視、DeskHatch側の「Theta Hatchプラグイン」ドロワー種別、インストーラーと署名。
+以下は当初の設計メモです。
+
 - DeskHatch の現行コードは、ドロワーの種類が「Webページ」と内蔵ツール（エディタ・電卓など）のみで、外部プラグイン用の仕組みはまだありません。
   DeskHatch側に「プラグイン型ドロワー」（ローカルのHTML＋preloadでipcを使えるもの）を追加し、Meishi-Claudeをその最初のプラグインにする想定です。
 - PCでの取り込み：ScanSnapの保存フォルダを直接監視して自動取り込み（Android版ではできなかった点）。ドラッグ＆ドロップでDeskHatchのバーに名刺画像を落とすと取り込み。

@@ -5,6 +5,7 @@
 | フォルダ | 中身 |
 | --- | --- |
 | `android/` | Androidアプリ（Java + WebView UI）。ビルド方法は `android/README.md` |
+| `desktop/` | Windows / Mac版（Electron）。Vaultフォルダを直接読み書きし、DeskHatchのドロワーにも表示できる。使い方は `desktop/README.md` |
 | `docs/` | 引き継ぎメモ・検証記録・ロードマップ |
 
-今後の予定（Windows/Mac版、Google Drive同期、DeskHatchプラグイン化）は [`docs/ROADMAP.md`](docs/ROADMAP.md) を参照してください。
+Theta Hatch シリーズ共通の約束は [`docs/THETA_HATCH_SPEC.md`](docs/THETA_HATCH_SPEC.md)、今後の予定は [`docs/ROADMAP.md`](docs/ROADMAP.md) を参照してください。

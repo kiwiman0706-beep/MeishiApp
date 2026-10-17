@@ -100,6 +100,9 @@ const getPerson = () => state.people.find((p) => p.id === selected),
   company = (p) =>
     p.company || p.suggestion?.company || (p.kind === "shop" ? p.genre || "お店" : "会社・組織 未登録"),
   shopOnly = ["genre", "hours", "holidays"],
+  // Features differ by platform (THETA_HATCH_SPEC §4.1). Android sends no caps: everything is on.
+  can = (cap) => !Array.isArray(state.caps) || state.caps.includes(cap),
+  phoneOnly = (cap, html) => (can(cap) ? html : ""),
   visible = (p) => p.kind !== "nengaInbox",
   img = (f) => "/media/" + encodeURIComponent(f),
   status = (p) =>
@@ -168,7 +171,7 @@ function shutter() {
 function nav() {
   const onList = ["home", "detail", "edit"].includes(route);
   const onMenu = ["menu", "gemini", "nenga"].includes(route);
-  return `<nav class="nav"><button class="${onList ? "active" : ""}" onclick="go('home')">${icon("card")}名刺</button><button class="shutter" onclick="shutter()" oncontextmenu="event.preventDefault();bulkSheet()" aria-label="名刺を撮影">${icon("camera")}<span>撮影</span></button><button class="${onMenu ? "active" : ""}" onclick="go('menu')">${icon("menu")}メニュー</button></nav>`;
+  return `<nav class="nav"><button class="${onList ? "active" : ""}" onclick="go('home')">${icon("card")}名刺</button>${can("scan") ? `<button class="shutter" onclick="shutter()" oncontextmenu="event.preventDefault();bulkSheet()" aria-label="名刺を撮影">${icon("camera")}<span>撮影</span></button>` : `<button class="shutter" onclick="importSheet('pick')" aria-label="名刺を取り込む" title="画像・PDFをこの画面にドラッグ＆ドロップしても取り込めます">${icon("plus")}<span>取り込む</span></button>`}<button class="${onMenu ? "active" : ""}" onclick="go('menu')">${icon("menu")}メニュー</button></nav>`;
 }
 function render() {
   const page =
@@ -345,7 +348,7 @@ function calendarView(list) {
     picked.length
       ? `<p class="caption">${esc(calDay.replace(/-/g, "/"))} に名刺交換した人（${picked.length}人）</p><div class="cardlist">${picked.map((p) => `<button class="person compact" onclick="openPerson('${p.id}')"><div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}${p.metPlace ? " ・ " + esc(p.metPlace) : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`
       : `<p class="caption center">色の付いた日を押すと、その日に会った人を表示します。名刺交換日のない名刺 ${list.length - dated.length}件は表示されません。</p>`
-  }<button class="${pending ? "secondary" : "outline"} full gap" onclick="calendarRegister(${pending})">${icon("clock")}${pending ? `Googleカレンダーに登録（未登録 ${pending}件）` : "Googleカレンダーの設定"}</button>`;
+  }${can("calendar") ? `<button class="${pending ? "secondary" : "outline"} full gap" onclick="calendarRegister(${pending})">${icon("clock")}${pending ? `Googleカレンダーに登録（未登録 ${pending}件）` : "Googleカレンダーの設定"}</button>` : ""}`;
 }
 function calendarRegister(pending) {
   if (!pending) return calendarSettings();
@@ -487,6 +490,7 @@ function primaryAction(p) {
     return `<button class="primary full" onclick="beginEdit()">${icon("check")}内容を確認して保存</button>`;
   if (!p.contactRawId && p.contactRegistered)
     return `<p class="caption center">別の端末でGoogle連絡先に登録済みです</p>`;
+  if (!can("contacts")) return `<p class="caption center">Google連絡先への登録はスマホ版で行えます</p>`;
   if (!p.contactRawId)
     return `<button class="primary full" onclick="registerContact()">${icon("user")}Google連絡先に登録</button>`;
   return `<button class="outline full" onclick="call('viewContact',{id:selected})">${icon("user")}登録した連絡先を開く</button>`;
@@ -505,7 +509,7 @@ function detail() {
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button></div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
@@ -525,10 +529,10 @@ function detailMenu() {
   const p = getPerson();
   modal(
     `<h2>${esc(title(p))}</h2><div class="mlist">${[
-      menuRow("camera", "スキャンで画像を追加", "裏面や追加ページを撮影", "closeModal();scanAdd()"),
+      phoneOnly("scan", menuRow("camera", "スキャンで画像を追加", "裏面や追加ページを撮影", "closeModal();scanAdd()")),
       menuRow("image", "画像・PDFを追加", "", "closeModal();call('pick',{id:selected,mode:'all'})"),
       p.pages.length ? menuRow("spark", "Geminiで読み取り直す", "結果は保存前に確認できます", "closeModal();reread()") : "",
-      p.status === "confirmed" && !p.contactRawId ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
+      p.status === "confirmed" && !p.contactRawId && can("contacts") ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
       menuRow("download", "書類・手紙を添付", "契約書・案内状・手紙などを撮影・PDFで", "attachSheet()"),
       menuRow("user", "人物写真・会社ロゴ", p.portrait || p.logo ? "登録済み" : "画像検索して登録", "assetSheet()"),
       state.people.length > 1 ? menuRow("link", "別の名刺と統合", "同じ人の名刺をまとめる", "mergeSheet()") : "",
@@ -540,7 +544,7 @@ function detailMenu() {
 function attachSheet() {
   modal(
     `<h2>${icon("download")} 書類・手紙を添付</h2><label class="label">件名（任意）</label><input id="atitle" placeholder="例：見積書、お礼状、案内状"><label class="label">やり取り</label><select id="adir"><option value="received">受け取った</option><option value="sent">送った</option></select><div class="mlist gap">${[
-      menuRow("camera", "撮影して添付", "何ページでも続けて撮影", "attachGo('scan')"),
+      phoneOnly("scan", menuRow("camera", "撮影して添付", "何ページでも続けて撮影", "attachGo('scan')")),
       menuRow("image", "画像・PDFを選んで添付", "PDFは原本も保存します", "attachGo('pick')"),
     ].join("")}</div><p class="caption">添付した書類は詳細画面の「年賀状・お便り・書類」に日付つきで並び、同期・バックアップにも含まれます。</p>`,
   );
@@ -619,7 +623,7 @@ function editPage() {
   const p = getPerson();
   const warn = draft.fromSuggestion && p.suggestion?.warnings;
   const registered = !!p.contactRawId;
-  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><label class="span2"><span class="label">種類</span><select onchange="draft.kind=this.value;render()"><option value="person" ${draft.kind !== "shop" ? "selected" : ""}>人の名刺</option><option value="shop" ${draft.kind === "shop" ? "selected" : ""}>お店のカード</option></select></label><div class="grid2">${fields.filter(([k]) => draft.kind === "shop" || !shopOnly.includes(k) || draft[k]).map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace", "genre", "hours", "holidays"].includes(k) ? "span2" : ""}"><span class="label">${k === "name" && draft.kind === "shop" ? "店名" : l}</span>${["email", "phone", "mobile", "fax", "address", "hours"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存（Google連絡先にも反映）</button><p class="caption">このアプリで登録した連絡先を、ここでの内容で上書きします。</p>` : `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}`}</div>`;
+  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><label class="span2"><span class="label">種類</span><select onchange="draft.kind=this.value;render()"><option value="person" ${draft.kind !== "shop" ? "selected" : ""}>人の名刺</option><option value="shop" ${draft.kind === "shop" ? "selected" : ""}>お店のカード</option></select></label><div class="grid2">${fields.filter(([k]) => draft.kind === "shop" || !shopOnly.includes(k) || draft[k]).map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace", "genre", "hours", "holidays"].includes(k) ? "span2" : ""}"><span class="label">${k === "name" && draft.kind === "shop" ? "店名" : l}</span>${["email", "phone", "mobile", "fax", "address", "hours"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存（Google連絡先にも反映）</button><p class="caption">このアプリで登録した連絡先を、ここでの内容で上書きします。</p>` : can("contacts") ? `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}` : `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存</button>`}</div>`;
 }
 function savePerson(thenContact) {
   if (!String(draft.name || "").trim()) {
@@ -971,10 +975,10 @@ function nengaPage() {
     .sort((a, b) => b - a)
     .map((v) => `<option value="${v}" ${v === y ? "selected" : ""}>${v}年の年賀状</option>`)
     .join("")}</select></div><div class="stats"><div><small>届いた</small><div><strong>${people.filter((p) => got(p, y, "received").length).length}</strong> <small>通</small></div></div><div class="statRight"><small>送った</small><div><strong>${people.filter((p) => got(p, y, "sent").length).length}</strong> <small>通</small></div></div></div><div class="mlist">${[
-    menuRow("camera", "届いた年賀状を撮影", "1通ずつ（両面を撮って完了）", `call('scan',{id:'',mode:'all',nenga:true,year:${y}})`),
-    menuRow("card", "まとめて撮影", "1通目の両面→2通目の両面…の順に", `call('bulkScan',{mode:'pair',nenga:true,year:${y}})`),
+    phoneOnly("scan", menuRow("camera", "届いた年賀状を撮影", "1通ずつ（両面を撮って完了）", `call('scan',{id:'',mode:'all',nenga:true,year:${y}})`)),
+    phoneOnly("scan", menuRow("card", "まとめて撮影", "1通目の両面→2通目の両面…の順に", `call('bulkScan',{mode:'pair',nenga:true,year:${y}})`)),
     menuRow("image", "画像・PDFから取り込む", "スキャン済みの年賀状（2ページずつ = 1通）", `call('pick',{mode:'pair',nenga:true,year:${y}})`),
-    menuRow("mail", "お便り・手紙を撮影", "暑中見舞い・クリスマスカード・手紙など（差出人を読み取り）", `call('scan',{id:'',mode:'all',nenga:true})`),
+    menuRow("mail", can("scan") ? "お便り・手紙を撮影" : "お便り・手紙を取り込む", "暑中見舞い・クリスマスカード・手紙など（差出人を読み取り）", `call('scan',{id:'',mode:'all',nenga:true})`),
   ].join("")}</div>${
     inbox.length
       ? `<div class="tip gap">${inbox.map((p) => `<div class="step"><b>${p.queue ? '<i class="spin"></i>' : "!"}</b><span>${p.queue ? "差出人を読み取り中…" : `読み取れませんでした${p.queueError ? "：" + esc(p.queueError) : ""} <button class="link" onclick="call('nengaRetry',{id:'${p.id}'})">再試行</button>`}</span></div>`).join("")}</div>`
@@ -1005,39 +1009,41 @@ function menuPage() {
   return `<header class="top"><div class="brand"><div class="mark">${icon("menu")}</div><div><div class="brandline">MENU</div><h1>メニュー</h1></div></div></header>${recordBanner()}${section(
     "取り込み",
     [
-      ...(state.driveFolderName
+      ...(!can("drive") ? [] : state.driveFolderName
         ? [
             menuRow("cloud", "Google Driveから取り込む", esc(state.driveFolderName) + " ・ 済んだファイルは「登録済み」へ", "call('driveImport')"),
             menuRow("folder", "Driveフォルダの設定", groupings.find((g) => g[0] === (state.driveMode || "file"))[1], "driveSettingsSheet()"),
           ]
         : [menuRow("cloud", "Google DriveのScanSnapフォルダを設定", "PDFを取り込み、済んだら「登録済み」へ移動", "driveBrowse()")]),
-      menuRow("camera", "まとめて撮影", "何枚も続けて撮影（撮影ボタンの長押しでも開けます）", "bulkSheet()"),
+      phoneOnly("scan", menuRow("camera", "まとめて撮影", "何枚も続けて撮影（撮影ボタンの長押しでも開けます）", "bulkSheet()")),
       menuRow("image", "画像・PDFから取り込む", "写真やスキャンをまとめて", "importSheet('pick')"),
       menuRow("folder", "ScanSnapフォルダから取り込む", "フォルダ内を一括で", "importSheet('folder')"),
       state.folder ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
-      menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})"),
+      phoneOnly("scan", menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})")),
       menuRow("edit", "手入力で追加", "画像なしで登録", "manualAdd()"),
-      menuRow("download", "ZIPから一括取り込み", "名刺画像だけのZIP（Eightの画像など）・CSV付きZIP", "importZipSheet()"),
+      phoneOnly("zipImport", menuRow("download", "ZIPから一括取り込み", "名刺画像だけのZIP（Eightの画像など）・CSV付きZIP", "importZipSheet()")),
     ],
   )}${section("年賀状", [
     menuRow("mail", "年賀状・お便り", "年賀状の送受信、暑中見舞い・カード・手紙", "go('nenga')"),
   ])}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
-  ])}${section("同期", [
+  ])}${section("同期", !can("sync") ? [
+    menuRow("folder", "Theta Vault フォルダ", esc(state.vaultPath || "未設定") + (state.vaultWarnings?.length ? ` ・ ⚠ 読み込めないノート ${state.vaultWarnings.length}件` : ""), "call('chooseVault')", state.vaultWarnings?.length ? "attnrow" : ""),
+  ] : [
     state.syncEnabled
       ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "Theta Vault ・ 最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
       : menuRow("cloud", "Google Driveで同期を始める", "Theta Vault（Obsidian形式）でスマホ・PCと共有", "syncStart()"),
     state.syncEnabled ? menuRow("close", "同期をやめる", "Drive上のデータは残ります", "if(confirm('同期をやめますか？Drive上のデータは削除されません。'))call('syncStop')") : "",
   ])}${section("書き出し・バックアップ", [
     menuRow("table", "一覧をCSVで書き出す", "Excelで開けるUTF-8 CSV", "call('export',{kind:'csv'})"),
-    menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()"),
+    phoneOnly("backup", menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()")),
   ])}${section("設定", [
     menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
-    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
-    `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
-    menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
-    menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch 0.11.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>${can("scan") ? "撮影・Drive・" : ""}ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
+    phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
+    !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
+    !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
+  ])}<p class="footnote">Theta Meishi Hatch ${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "0.11.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

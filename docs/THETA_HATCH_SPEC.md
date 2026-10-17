@@ -44,7 +44,9 @@
 
 - UI → 端末：`Native.call(JSON.stringify({action, ...引数}))`
 - 端末 → UI：`window.onNative({type, data})`。`type` は `state`（全状態）、`toast`、`report`、`error`、`busy`、`open` など。
-- `state` に `platform`（`android` / `desktop`）と `caps`（使える機能の一覧）を含め、UIは `caps` にない操作を出さない。
+- `state` に `platform`（`android` / `desktop`）と `caps`（使える機能の一覧）を含め、UIは `caps` にない操作を出さない。`caps` が無いときは全機能（Android）。
+- デスクトップでは同じ2つをHTTPで提供する：`POST /api/call`（本文が `Native.call` のJSON）、`GET /api/events`（SSE、1行が `onNative` の引数）。
+- Meishiのcaps：Android＝全部。デスクトップ＝`pick folder gemini vault map export nenga attach`（`contacts calendar scan record drive zipImport backup` は無し）。
 
 ### 4.2 Androidウィジェット
 
