@@ -12,10 +12,15 @@
 <uses-feature android:name="android.hardware.camera" android:required="false"/>
 <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 <application android:theme="@style/AppTheme" android:label="Theta Meishi Hatch" android:icon="@drawable/ic_app" android:allowBackup="false" android:supportsRtl="true" android:usesCleartextTraffic="false">
-<activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
+<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden" android:windowSoftInputMode="adjustResize">
 <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
 </activity>
 <provider android:name=".FilesProvider" android:authorities="${applicationId}.files" android:exported="false" android:grantUriPermissions="true"/>
 <service android:name=".RecordingService" android:exported="false" android:foregroundServiceType="microphone"/>
+<receiver android:name=".RecentWidget" android:exported="false" android:label="最近の名刺">
+<intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+<meta-data android:name="android.appwidget.provider" android:resource="@xml/recent_widget_info"/>
+</receiver>
+<service android:name=".RecentWidget$Service" android:exported="false" android:permission="android.permission.BIND_REMOTEVIEWS"/>
 <service android:name=".ProcessingService" android:exported="false" android:foregroundServiceType="dataSync"/>
 </application></manifest>

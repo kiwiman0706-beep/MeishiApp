@@ -1,4 +1,10 @@
-# Theta Meishi Hatch 0.10.0（旧 Meishi-Claude）
+# Theta Meishi Hatch 0.11.0（旧 Meishi-Claude）
+
+## 0.11.0の変更点
+
+- **ホーム画面ウィジェット**「最近の名刺」：最近登録した名刺・最近開いた名刺を新しい順に最大8件（サムネイル・氏名・会社・日付）。タップでその名刺を開く、右上のボタンですぐ撮影。開いた履歴は端末内だけに保存（Vaultは変わらない）。
+- Theta Hatchシリーズ共通仕様：`../docs/THETA_HATCH_SPEC.md`。
+
 
 ## 0.10.0の変更点
 

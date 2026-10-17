@@ -152,6 +152,7 @@ function openPerson(id) {
   noteDraft = "";
   editNoteId = "";
   closeModal();
+  call("opened", { id }); // feeds the home-screen widget's "recently opened"
   // A pending Gemini result has only one sensible next step: review it.
   if (getPerson()?.suggestion) return beginEdit();
   route = "detail";
@@ -1036,7 +1037,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch 0.10.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch 0.11.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

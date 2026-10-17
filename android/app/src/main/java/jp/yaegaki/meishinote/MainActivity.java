@@ -174,6 +174,7 @@ public class MainActivity extends Activity {
           });
     }
     web.loadUrl("https://app.meishinote.local/index.html");
+    fromWidget(getIntent());
     IntentFilter f = new IntentFilter(getPackageName() + ".RECORDING");
     if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED);
     else registerReceiver(receiver, f);
@@ -202,8 +203,42 @@ public class MainActivity extends Activity {
     }
   }
 
+  // Widget taps: open a card, or go straight to the scanner. Held until the page has booted.
+  String launch = "";
+  long widgetSeen = -1;
+
+  void fromWidget(Intent i) {
+    if (i == null) return;
+    if (RecentWidget.ACTION_SCAN.equals(i.getAction())) launch = "scan";
+    else if (i.getStringExtra(RecentWidget.EXTRA_OPEN) != null) launch = "open:" + i.getStringExtra(RecentWidget.EXTRA_OPEN);
+    else return;
+    if (ready) runLaunch();
+  }
+
+  void runLaunch() {
+    String l = launch;
+    launch = "";
+    try {
+      if (l.equals("scan")) handle("quickScan", new JSONObject());
+      else if (l.startsWith("open:")) event("open", l.substring(5));
+    } catch (Exception e) {
+      error(e);
+    }
+  }
+
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    fromWidget(intent);
+  }
+
   void refresh() {
     try {
+      if (store.changedAt != widgetSeen) {
+        widgetSeen = store.changedAt;
+        RecentWidget.update(this);
+      }
       JSONObject state = store.snapshot();
       state
           .put("keySet", getSharedPreferences("prefs", 0).contains("key"))
@@ -483,6 +518,11 @@ public class MainActivity extends Activity {
     if (action.equals("boot")) {
       ready = true;
       refresh();
+      if (!launch.isEmpty()) runLaunch();
+      return;
+    }
+    if (action.equals("opened")) {
+      RecentWidget.opened(this, q.optString("id"));
       return;
     }
     if (action.equals("stopRecord")) {
