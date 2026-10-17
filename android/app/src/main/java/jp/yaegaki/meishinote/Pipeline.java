@@ -114,7 +114,10 @@ public final class Pipeline {
           JSONObject p = s.person(id);
           apply(p, result);
           boolean contact =
-              autoContact(c) && !p.optString("name").trim().isEmpty() && !p.optBoolean("contactUnlinked");
+              autoContact(c)
+                  && !p.optString("name").trim().isEmpty()
+                  && !p.optBoolean("contactUnlinked")
+                  && !p.optBoolean("contactRegistered");
           if (contact) p.put("queue", "contact");
           else p.remove("queue");
           if (p.optString("status").equals("review")) sum.review++;

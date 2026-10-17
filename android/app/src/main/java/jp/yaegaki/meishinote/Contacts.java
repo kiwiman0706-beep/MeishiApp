@@ -188,7 +188,8 @@ public final class Contacts {
     ContentProviderResult[] results =
         c.getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
     long id = ContentUris.parseId(results[0].uri);
-    p.put("contactRawId", id).put("contactAccount", account);
+    // contactRawId is per phone; contactRegistered syncs so other devices don't add it again.
+    p.put("contactRawId", id).put("contactAccount", account).put("contactRegistered", true);
     Store.get(c).put(p);
     String image = "";
     if (photo.equals("card") && p.getJSONArray("pages").length() > 0)

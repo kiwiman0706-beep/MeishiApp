@@ -20,7 +20,7 @@ deskhatch plugin  ← desktop/ をDeskHatchのドロワーとして登録
 
 ## フェーズ2：Google Drive同期
 
-0.4.0で、Drive接続の土台（OAuth許可、Drive REST）とScanSnapフォルダからの取り込み・「登録済み」への移動を実装しました。次はこの土台を使ってデータ本体の同期を作ります。
+0.4.0でDrive接続の土台とScanSnapフォルダ取り込み、0.6.0でデータ本体の同期を実装しました（仕様：`SYNC_SPEC.md`）。以下は当初の設計メモです。
 
 
 - **保存場所**：Drive上の「Meishi-Claude」フォルダ（ユーザーが中身を見られる場所）。1人 = 1つのJSON（`people/<id>.json`）と画像（`media/<file>`）。

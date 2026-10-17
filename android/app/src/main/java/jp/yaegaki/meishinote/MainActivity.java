@@ -41,7 +41,7 @@ public class MainActivity extends Activity {
       IMPORT_ZIP = 19;
   // Full Drive scope: the ScanSnap folder and its files were not created by this app,
   // and moving them into 登録済み needs write access to them.
-  static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+  static final String DRIVE_SCOPE = DriveAuth.SCOPE;
   AlertDialog scannerLoading;
   int scannerGeneration = 0;
 
@@ -207,6 +207,9 @@ public class MainActivity extends Activity {
           .put("contactPhoto", prefs().getString("contactPhoto", "card"))
           .put("driveFolderName", prefs().getString("driveFolderName", ""))
           .put("autoContact", prefs().getBoolean("autoContact", true))
+          .put("syncEnabled", prefs().getBoolean("syncEnabled", false))
+          .put("lastSync", prefs().getLong("lastSync", 0))
+          .put("syncError", prefs().getString("syncError", ""))
           .put("processing", ProcessingService.running ? ProcessingService.status : "")
           .put("lastReport", prefs().getString("lastReport", ""))
           .put("driveFolderId", prefs().getString("driveFolderId", ""))
@@ -569,6 +572,7 @@ public class MainActivity extends Activity {
                       p.remove("contactPhoto");
                       p.remove("contactDuplicate");
                       p.put("contactUnlinked", true);
+                      p.remove("contactRegistered");
                       store.put(p);
                       event("toast", "このアプリで追加した連絡先を削除しました");
                     }));
@@ -729,6 +733,23 @@ public class MainActivity extends Activity {
       case "driveClear":
         prefs().edit().remove("driveFolderId").remove("driveFolderName").apply();
         refresh();
+        break;
+      case "syncNow":
+        // Through the activity so Google can ask the user if access has lapsed; the
+        // service then gets tokens silently.
+        withDriveToken(
+            token -> {
+              prefs().edit().putBoolean("syncEnabled", true).remove("syncError").apply();
+              ProcessingService.requestSync(this);
+              refresh();
+              event("toast", "Google Driveと同期します（バックグラウンド）");
+            });
+        break;
+      case "syncStop":
+        prefs().edit().putBoolean("syncEnabled", false).apply();
+        Sync.forget(store);
+        refresh();
+        event("toast", "同期を停止しました。Drive上のデータはそのまま残ります");
         break;
       case "driveImport":
         withDriveToken(
@@ -1394,6 +1415,24 @@ public class MainActivity extends Activity {
     try {
       if (store != null && !ProcessingService.running && Pipeline.pending(store) > 0 && prefs().contains("key"))
         ProcessingService.start(this);
+      // Pick up other devices' changes when the app comes back after a while.
+      if (store != null
+          && prefs().getBoolean("syncEnabled", false)
+          && System.currentTimeMillis() - prefs().getLong("lastSync", 0) > 10 * 60 * 1000)
+        ProcessingService.requestSync(this);
+    } catch (Exception ignored) {
+    }
+  }
+
+  // Leaving the app with unsynced edits: push them while we are still allowed to start work.
+  @Override
+  protected void onPause() {
+    super.onPause();
+    try {
+      if (store != null
+          && prefs().getBoolean("syncEnabled", false)
+          && store.changedAt > prefs().getLong("lastSync", 0))
+        ProcessingService.requestSync(this);
     } catch (Exception ignored) {
     }
   }

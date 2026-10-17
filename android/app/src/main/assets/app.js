@@ -316,6 +316,8 @@ function primaryAction(p) {
     return `<button class="primary full" onclick="recognize()">${icon("spark")}Geminiで読み取る</button>`;
   if (p.status === "review")
     return `<button class="primary full" onclick="beginEdit()">${icon("check")}内容を確認して保存</button>`;
+  if (!p.contactRawId && p.contactRegistered)
+    return `<p class="caption center">別の端末でGoogle連絡先に登録済みです</p>`;
   if (!p.contactRawId)
     return `<button class="primary full" onclick="registerContact()">${icon("user")}Google連絡先に登録</button>`;
   return `<button class="outline full" onclick="call('viewContact',{id:selected})">${icon("user")}登録した連絡先を開く</button>`;
@@ -685,6 +687,14 @@ function importZipSheet() {
     `<h2>${icon("download")} Eightなどからインポート</h2><p class="caption">CSV（名刺の項目）と名刺画像を1つのZIPにまとめたファイルを読み込みます。作り方はリポジトリの docs/IMPORT_FORMAT.md を参照してください。</p><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>Google連絡先にも登録する</b><small>Eight経由で既に登録済みならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。氏名が空で画像がある行はGeminiで読み取ります。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
   );
 }
+function syncStart() {
+  if (
+    confirm(
+      "Google Driveのマイドライブに「Meishi-Claude データ」フォルダを作り、名刺・画像・メモ・録音を同期します。他の端末で同じGoogleアカウントの同期をオンにすると、データが共有されます。始めますか？",
+    )
+  )
+    call("syncNow");
+}
 function menuPage() {
   const unread = state.people.filter(
     (p) => p.status === "new" && p.pages.length,
@@ -710,6 +720,11 @@ function menuPage() {
     ],
   )}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
+  ])}${section("同期", [
+    state.syncEnabled
+      ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
+      : menuRow("cloud", "Google Driveで同期を始める", "スマホ・PCで名刺・画像・メモ・録音を共有", "syncStart()"),
+    state.syncEnabled ? menuRow("close", "同期をやめる", "Drive上のデータは残ります", "if(confirm('同期をやめますか？Drive上のデータは削除されません。'))call('syncStop')") : "",
   ])}${section("書き出し・バックアップ", [
     menuRow("table", "一覧をCSVで書き出す", "Excelで開けるUTF-8 CSV", "call('export',{kind:'csv'})"),
     menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()"),
@@ -718,7 +733,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Meishi-Claude 0.5.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Meishi-Claude 0.6.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

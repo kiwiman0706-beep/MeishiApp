@@ -267,6 +267,23 @@ const p = (id, name, company, status = "confirmed") => ({
   delete demo.people[1].contactDuplicate;
   delete demo.people[0].contactRawId;
   await page.evaluate((d) => { onNative({ type: "state", data: d }); closeModal(); go("home"); }, demo);
+  // Sync: start from the menu, then manual sync with last-synced time.
+  await page.evaluate(() => { closeModal(); go("menu"); });
+  await page.getByRole("button", { name: /Google Driveで同期を始める/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "syncNow" });
+  demo.syncEnabled = true;
+  demo.lastSync = Date.now();
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("menu"); }, demo);
+  assert(await page.getByRole("button", { name: /今すぐ同期 最終同期/ }).isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "12-sync-menu.png"), fullPage: true });
+  // A card registered on another device offers no second registration.
+  demo.people[0].contactRegistered = true;
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); openPerson("demo-1"); }, demo);
+  assert(await page.getByText("別の端末でGoogle連絡先に登録済みです").isVisible());
+  assert.equal(await page.getByRole("button", { name: "Google連絡先に登録" }).count(), 0);
+  delete demo.people[0].contactRegistered;
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });

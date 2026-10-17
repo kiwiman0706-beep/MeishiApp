@@ -28,6 +28,8 @@ public final class Store {
   private static Store instance;
   public final File root, media;
   private JSONObject db;
+  // Last local write, so the app knows whether there is anything to sync on leaving.
+  public volatile long changedAt = 0;
   private String lastGood;
 
   public static synchronized Store get(Context c) throws Exception {
@@ -82,9 +84,20 @@ public final class Store {
 
   public synchronized void put(JSONObject p) throws Exception {
     p = new JSONObject(p.toString());
+    p.put("updated", System.currentTimeMillis());
+    putKeepingTime(p);
+  }
+
+  // For records arriving from sync: keeps the sender's "updated" so devices agree.
+  public synchronized void putSynced(JSONObject p) throws Exception {
+    putKeepingTime(new JSONObject(p.toString()));
+    tombstones().remove(p.getString("id"));
+    save();
+  }
+
+  private void putKeepingTime(JSONObject p) throws Exception {
     Set<String> before = referenced(db);
     JSONArray a = db.getJSONArray("people");
-    p.put("updated", System.currentTimeMillis());
     for (int i = 0; i < a.length(); i++)
       if (p.getString("id").equals(a.getJSONObject(i).getString("id"))) {
         a.put(i, p);
@@ -109,7 +122,29 @@ public final class Store {
     put(p);
   }
 
+  // Deleted ids are remembered so sync can tell other devices (see docs/SYNC_SPEC.md).
+  JSONObject tombstones() throws Exception {
+    JSONObject t = db.optJSONObject("tombstones");
+    if (t == null) db.put("tombstones", t = new JSONObject());
+    return t;
+  }
+
+  public synchronized JSONObject tombstoneSnapshot() throws Exception {
+    return new JSONObject(tombstones().toString());
+  }
+
+  public synchronized void clearTombstone(String id) throws Exception {
+    tombstones().remove(id);
+    save();
+  }
+
   public synchronized void remove(String id) throws Exception {
+    tombstones().put(id, System.currentTimeMillis());
+    removeQuietly(id);
+  }
+
+  // Removal requested by sync itself: no new tombstone.
+  public synchronized void removeQuietly(String id) throws Exception {
     Set<String> before = referenced(db);
     JSONArray a = db.getJSONArray("people");
     for (int i = 0; i < a.length(); i++)
@@ -191,10 +226,12 @@ public final class Store {
         all.remove(i);
         break;
       }
+    tombstones().put(sourceId, System.currentTimeMillis());
     save();
   }
 
   private void save() throws Exception {
+    changedAt = System.currentTimeMillis();
     AtomicFile af = new AtomicFile(new File(root, "data.json"));
     FileOutputStream out = null;
     try {

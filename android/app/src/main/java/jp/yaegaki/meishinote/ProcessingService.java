@@ -22,6 +22,13 @@ public class ProcessingService extends Service {
     c.startForegroundService(new Intent(c, ProcessingService.class));
   }
 
+  static volatile boolean syncRequested = false;
+
+  public static void requestSync(Context c) {
+    syncRequested = true;
+    start(c);
+  }
+
   public static void startDrive(Context c, String token) {
     driveToken = token;
     start(c);
@@ -53,6 +60,22 @@ public class ProcessingService extends Service {
   void progress(String text) {
     status = text;
     getSystemService(NotificationManager.class).notify(ONGOING, note(text, true));
+    tell("");
+  }
+
+  void sync(StringBuilder report) {
+    syncRequested = false;
+    android.content.SharedPreferences prefs = getSharedPreferences("prefs", 0);
+    try {
+      Sync.Result r = Sync.run(this, new Drive(DriveAuth.silentToken(this)), this::progress);
+      prefs.edit().putLong("lastSync", System.currentTimeMillis()).remove("syncError").apply();
+      // Quiet when nothing moved; a notification per routine sync would be noise.
+      if (r.up + r.down + r.merged + r.deleted > 0 || !r.errors.isEmpty())
+        report.append(report.length() > 0 ? "\n" : "").append(r.text());
+    } catch (Exception e) {
+      prefs.edit().putString("syncError", String.valueOf(e.getMessage())).apply();
+      report.append(report.length() > 0 ? "\n" : "").append("同期できませんでした：").append(e.getMessage());
+    }
     tell("");
   }
 
@@ -105,8 +128,10 @@ public class ProcessingService extends Service {
         if (s.read + s.registered + s.updated + s.failed > 0 || s.halted)
           report.append(report.length() > 0 ? "\n" : "").append(s.text());
         for (String e : s.errors) report.append("\n").append(e);
+        if (s.read + s.registered + s.updated > 0) syncRequested = true; // share what was just added
         if (s.halted) break;
       }
+      if (syncRequested && getSharedPreferences("prefs", 0).getBoolean("syncEnabled", false)) sync(report);
     } catch (Exception e) {
       report.append("処理に失敗しました：").append(e.getMessage());
     } finally {

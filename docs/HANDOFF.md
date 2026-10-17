@@ -1,5 +1,13 @@
 # 開発引き継ぎ
 
+## 0.6.0での変更
+
+- `Sync.java`：Drive同期（仕様は `SYNC_SPEC.md`）。判定は純粋関数 `Sync.decide(lh, rh, ih)` に集約し、`SyncTest` で全パターンを固定。端末側の前回状態は `vault/sync.json`、削除は `data.json` の `tombstones`。
+- `Store.putSynced` は受信したレコードの `updated` を保つ。`Store.removeQuietly` は削除印を残さない削除（同期由来）。`Store.changedAt` で未同期の変更を判定。
+- `DriveAuth.silentToken`：サービスからの無言トークン取得。再許可が要る時は失敗させ、`syncError` に表示 → 「今すぐ同期」（Activity経由）で許可を取り直す。
+- 同期は `ProcessingService` の最後に実行（`requestSync`）。起動時（10分以上経過）、離脱時（未同期の変更あり）、読み取り・登録の後。
+- `contactRegistered` は共有、`contactRawId` は端末ごと。
+
 ## 0.5.0での変更
 
 - **処理キュー**：人物の `queue` フィールド（"recognize" → "contact"）が未処理の工程。`Pipeline.run` が順に処理し、`ProcessingService`（前面サービス、dataSync）がそれを回す。プロセスが落ちても `onResume` で再開。429/401/403やAPIキー不備では中断し、キューを残す。
