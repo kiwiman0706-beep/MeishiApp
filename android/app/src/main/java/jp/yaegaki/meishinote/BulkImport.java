@@ -47,6 +47,10 @@ public final class BulkImport {
     alias("back", "裏面画像", "裏画像", "画像裏", "裏面", "画像2", "back", "image2");
     alias("extra", "追加画像", "画像3", "画像4", "image3", "image4");
     alias("key", "id", "名刺id", "カードid", "eightid");
+    alias("genre", "ジャンル", "業種", "ジャンル・業種", "genre");
+    alias("hours", "営業時間", "hours");
+    alias("holidays", "定休日", "休業日", "holidays");
+    alias("kind", "種類", "kind");
   }
 
   static String norm(String s) {
@@ -243,6 +247,8 @@ public final class BulkImport {
           boolean named = !p.optString("name").trim().isEmpty();
           p.put("status", named ? "confirmed" : "new");
           if (!toContacts) p.put("noAutoContact", true);
+          String kind = first(v, "kind").toLowerCase(Locale.ROOT);
+          if (kind.contains("店") || kind.contains("shop")) p.put("kind", "shop");
           store.put(p);
           if (!pics.isEmpty()) {
             JSONObject res = importer.run(pics, "all", p.getString("id"), t -> {}, true);

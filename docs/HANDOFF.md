@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.9.0での変更
+
+- 年賀状：撮影・取り込み時に `nenga:true, year` を付けると、新しいレコードは `kind:"nengaInbox"` になり、キュー工程 `nenga` で `Gemini.recognizeNenga` → `Nenga.file`。差出人の氏名（連名のどれか）が一意に一致、同名が複数なら住所で絞り込み、氏名なしなら住所の一致で既存の人へ `greetings[]` として追加し、仮レコードは削除（画像は先に移すので消えない）。一致しなければ仮レコードを人に変換（`noAutoContact`、タグ「年賀状」）。`nengaInbox` は一覧・重複・同期・CSVの対象外。年の既定は10月以降なら翌年（`Nenga.season`）。
+- `greetings[].files` の画像は `Store.referenced` と `Sync.media` に含む（バックアップ・同期・不要ファイル削除が正しく扱う）。
+- お店：`Gemini.CARD_PROMPT` が `kind`（person/shop）と `genre` `hours` `holidays` を返す。`Store.FIELDS` に3項目を追加し、`kind` は `Store.edit` で保存。
+- `NengaTest` で突き合わせ・年度・画像参照を固定。
+
 ## 0.8.0での変更（Theta Meishi Hatchに改名）
 
 - 表示名のみ変更。applicationId `jp.yaegaki.meishiclaude`・署名・Driveの同期フォルダ（印で検索）・OAuth設定は従来どおり。

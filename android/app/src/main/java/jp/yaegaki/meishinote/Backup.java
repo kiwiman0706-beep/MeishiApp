@@ -178,13 +178,14 @@ public final class Backup {
       w.write('\uFEFF');
       String[] head = {
         "氏名", "ふりがな", "会社・組織", "部署", "肩書き", "メール", "電話", "携帯", "FAX", "郵便番号", "住所", "Web", "タグ",
-        "交換日", "交換場所"
+        "交換日", "交換場所", "ジャンル・業種", "営業時間", "定休日"
       };
       for (String h : head) w.write(cell(h) + ",");
-      w.write("\"メモ\",\"画像ファイル\",\"録音ファイル\",\"確認状態\"\r\n");
+      w.write("\"メモ\",\"画像ファイル\",\"録音ファイル\",\"確認状態\",\"種類\",\"年賀状\"\r\n");
       JSONArray a = s.snapshot().getJSONArray("people");
       for (int i = 0; i < a.length(); i++) {
         JSONObject p = a.getJSONObject(i);
+        if (p.optString("kind").equals(Nenga.INBOX)) continue; // not sorted into a person yet
         for (String k : Store.FIELDS) w.write(cell(p.optString(k)) + ",");
         StringBuilder notes = new StringBuilder();
         JSONArray ns = p.getJSONArray("notes");
@@ -206,6 +207,10 @@ public final class Backup {
                 + cell(paths(p.getJSONArray("audio")))
                 + ","
                 + cell(p.optString("status"))
+                + ","
+                + cell(p.optString("kind").equals("shop") ? "お店" : "人")
+                + ","
+                + cell(greetings(p))
                 + "\r\n");
       }
     }
@@ -216,6 +221,19 @@ public final class Backup {
     List<String> r = new ArrayList<>();
     for (int i = 0; i < a.length(); i++) r.add("media/" + a.getJSONObject(i).getString("file"));
     return String.join("\n", r);
+  }
+
+  // "2027 届 01/02 / 2027 送 12/20" — a compact history for the spreadsheet.
+  static String greetings(JSONObject p) throws Exception {
+    JSONArray a = p.optJSONArray("greetings");
+    if (a == null) return "";
+    List<String> out = new ArrayList<>();
+    for (int i = 0; i < a.length(); i++) {
+      JSONObject g = a.getJSONObject(i);
+      out.add(g.optInt("year") + " " + (g.optString("dir").equals("sent") ? "送" : "届") + " " + g.optString("date"));
+    }
+    Collections.sort(out);
+    return String.join(" / ", out);
   }
 
   static String cell(String s) {

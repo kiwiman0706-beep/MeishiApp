@@ -1477,3 +1477,69 @@ button:disabled {
   max-width: none;
   vertical-align: baseline;
 }
+.badge.shop {
+  background: #fbefd9;
+  color: #8a5a14;
+}
+.gthumbs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.gthumbs img {
+  height: 84px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #f5f5ef;
+}
+.nlist {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+.nrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px;
+}
+.nwho {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  text-align: left;
+  padding: 4px 6px;
+}
+.nwho small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.ntog {
+  flex-shrink: 0;
+  width: 64px;
+  min-height: 48px;
+  padding: 4px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  color: var(--muted);
+}
+.ntog svg {
+  width: 14px;
+  height: 14px;
+}
+.ntog.on {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.ntog small {
+  font-size: 10px;
+}

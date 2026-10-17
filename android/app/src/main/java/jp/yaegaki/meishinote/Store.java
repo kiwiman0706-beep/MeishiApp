@@ -23,7 +23,10 @@ public final class Store {
     "website",
     "tags",
     "metDate",
-    "metPlace"
+    "metPlace",
+    "genre",
+    "hours",
+    "holidays"
   };
   private static Store instance;
   public final File root, media;
@@ -113,6 +116,10 @@ public final class Store {
     JSONObject p = person(id);
     for (String k : FIELDS) if (input.has(k)) p.put(k, input.optString(k, ""));
     if (input.has("status")) p.put("status", input.optString("status"));
+    if (input.has("kind")) {
+      if (input.optString("kind").equals("shop")) p.put("kind", "shop");
+      else if (p.optString("kind").equals("shop")) p.remove("kind");
+    }
     // Saving from the review screen settles a pending Gemini result into the record.
     if (input.optBoolean("acceptSuggestion") && p.has("suggestion")) {
       JSONObject s = p.getJSONObject("suggestion");
@@ -206,8 +213,10 @@ public final class Store {
     if (targetId.equals(sourceId)) return;
     JSONObject target = person(targetId), source = person(sourceId);
     for (String k : FIELDS) if (target.optString(k).isEmpty()) target.put(k, source.optString(k));
-    for (String k : new String[] {"pages", "sources", "notes", "audio"}) {
-      JSONArray a = source.getJSONArray(k);
+    for (String k : new String[] {"pages", "sources", "notes", "audio", "greetings"}) {
+      JSONArray a = source.optJSONArray(k);
+      if (a == null) continue;
+      if (target.optJSONArray(k) == null) target.put(k, new JSONArray());
       for (int i = 0; i < a.length(); i++) target.getJSONArray(k).put(a.get(i));
     }
     for (String k : new String[] {"portrait", "logo"})
@@ -290,6 +299,15 @@ public final class Store {
             if (!o.optString("file").isEmpty()) files.add(o.getString("file"));
           }
       }
+      // Images of New Year cards live inside each greeting entry.
+      JSONArray greetings = p.optJSONArray("greetings");
+      if (greetings != null)
+        for (int j = 0; j < greetings.length(); j++) {
+          JSONArray fs = greetings.getJSONObject(j).optJSONArray("files");
+          if (fs != null)
+            for (int k = 0; k < fs.length(); k++)
+              if (!fs.getJSONObject(k).optString("file").isEmpty()) files.add(fs.getJSONObject(k).getString("file"));
+        }
     }
     return files;
   }

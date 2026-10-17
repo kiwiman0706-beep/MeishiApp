@@ -244,6 +244,21 @@ public class MainActivity extends Activity {
   // registration), so the user is free to scan the next card straight away.
   void afterImport(JSONObject imported, JSONObject q) throws Exception {
     JSONArray ids = imported.getJSONArray("ids");
+    if (q.optBoolean("nenga") && q.optString("id").isEmpty()) {
+      List<String> list = new ArrayList<>();
+      for (int i = 0; i < ids.length(); i++) {
+        JSONObject p = store.person(ids.getString(i));
+        p.put("kind", Nenga.INBOX).put("nengaYear", q.optInt("year", Nenga.season(System.currentTimeMillis())));
+        store.put(p);
+        list.add(p.getString("id"));
+      }
+      if (prefs().contains("key")) {
+        Pipeline.enqueue(store, list, "nenga");
+        startProcessing();
+        event("toast", list.size() + "通の年賀状を保存しました。差出人の読み取りはバックグラウンドで進めます");
+      } else event("toast", "年賀状を保存しました。Gemini APIキーを設定すると差出人を読み取ります");
+      return;
+    }
     boolean auto =
         q.optString("id").isEmpty()
             && ids.length() > 0
@@ -751,6 +766,61 @@ public class MainActivity extends Activity {
         prefs().edit().remove("driveFolderId").remove("driveFolderName").apply();
         refresh();
         break;
+      case "greeting":
+        {
+          // Toggle a sent/received mark for a year (entries carrying card images are kept).
+          JSONObject p = store.person(id);
+          int year = q.getInt("year");
+          String dir = q.getString("dir");
+          if (!dir.equals("sent") && !dir.equals("received")) throw new IOException("不正な種類");
+          JSONArray a = p.optJSONArray("greetings");
+          if (a == null) p.put("greetings", a = new JSONArray());
+          if (q.optBoolean("on")) {
+            if (!Nenga.has(p, year, dir))
+              a.put(
+                  new JSONObject()
+                      .put("id", UUID.randomUUID().toString())
+                      .put("year", year)
+                      .put("dir", dir)
+                      .put("date", q.optString("date", Nenga.today(System.currentTimeMillis())))
+                      .put("kind", "nenga")
+                      .put("files", new JSONArray()));
+          } else
+            for (int i = a.length() - 1; i >= 0; i--) {
+              JSONObject g = a.getJSONObject(i);
+              JSONArray fs = g.optJSONArray("files");
+              if (g.optInt("year") == year && g.optString("dir").equals(dir) && (fs == null || fs.length() == 0)) a.remove(i);
+            }
+          store.put(p);
+          refresh();
+          break;
+        }
+      case "greetingEdit":
+        {
+          JSONObject p = store.person(id);
+          JSONArray a = p.optJSONArray("greetings");
+          for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject g = a.getJSONObject(i);
+            if (!g.optString("id").equals(q.getString("gid"))) continue;
+            if (q.optBoolean("remove")) a.remove(i);
+            else {
+              if (q.optString("date").matches("\\d{4}-\\d{2}-\\d{2}")) g.put("date", q.getString("date"));
+              if (q.has("year")) g.put("year", q.getInt("year"));
+            }
+            break;
+          }
+          store.put(p);
+          refresh();
+          break;
+        }
+      case "nengaRetry":
+        {
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          Pipeline.enqueue(store, Collections.singletonList(id), "nenga");
+          refresh();
+          startProcessing();
+          break;
+        }
       case "mapOpen":
         // First map view opts in to sending addresses to the platform geocoder.
         prefs().edit().putBoolean("geoEnabled", true).apply();
@@ -985,8 +1055,11 @@ public class MainActivity extends Activity {
             "出力ファイルを作成中",
             () -> {
               String kind = q.optString("kind");
-              File f = kind.equals("csv") ? Backup.csv(this) : Backup.make(this);
-              String mime = kind.equals("csv") ? "text/csv" : "application/zip";
+              File f =
+                  kind.equals("csv")
+                      ? Backup.csv(this)
+                      : kind.equals("nenga") ? Nenga.csv(this, q.optInt("year")) : Backup.make(this);
+              String mime = kind.equals("zip") ? "application/zip" : "text/csv";
               runOnUiThread(
                   () -> {
                     try {
@@ -1003,7 +1076,9 @@ public class MainActivity extends Activity {
                                 .addCategory(Intent.CATEGORY_OPENABLE)
                                 .putExtra(
                                     Intent.EXTRA_TITLE,
-                                    "meishinote-" + stamp + (kind.equals("csv") ? ".csv" : ".zip")),
+                                    (kind.equals("nenga") ? "nenga-" + q.optInt("year") + "-" : "meishinote-")
+                                        + stamp
+                                        + (kind.equals("zip") ? ".zip" : ".csv")),
                             SAVE);
                       }
                     } catch (Exception e) {

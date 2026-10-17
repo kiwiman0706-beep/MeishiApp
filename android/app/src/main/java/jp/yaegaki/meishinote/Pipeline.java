@@ -61,6 +61,8 @@ public final class Pipeline {
     // Gemini only returns card fields, so tags / metDate / metPlace typed by the user survive.
     // Only values Gemini actually read replace what is there (e.g. names from an import's file names).
     for (String k : Store.FIELDS) if (!r.optString(k).trim().isEmpty()) p.put(k, r.optString(k));
+    if (r.optString("kind").equals("shop")) p.put("kind", "shop");
+    else if (r.has("kind")) p.remove("kind");
     p.put("rawText", r.optString("rawText")).put("warnings", r.optString("warnings"));
     if (p.optString("metDate").isEmpty())
       p.put(
@@ -72,13 +74,14 @@ public final class Pipeline {
   }
 
   public static class Summary {
-    int read, registered, updated, failed, review;
+    int read, registered, updated, failed, review, nenga;
     boolean halted;
     final List<String> errors = new ArrayList<>();
 
     public String text() {
       StringBuilder b = new StringBuilder();
       if (read > 0) b.append("読み取り ").append(read).append("件");
+      if (nenga > 0) b.append(b.length() > 0 ? " / " : "").append("年賀状 ").append(nenga).append("通");
       if (registered > 0) b.append(b.length() > 0 ? " / " : "").append("連絡先に登録 ").append(registered).append("件");
       if (updated > 0) b.append(b.length() > 0 ? " / " : "").append("連絡先を更新 ").append(updated).append("件");
       if (review > 0) b.append(b.length() > 0 ? " / " : "").append("要確認 ").append(review).append("件");
@@ -125,6 +128,11 @@ public final class Pipeline {
           if (p.optString("status").equals("review")) sum.review++;
           s.put(p);
           sum.read++;
+        } else if (step.equals("nenga")) {
+          progress.update("年賀状を読み取り中（残り" + left + "件）");
+          if (g == null) g = new Gemini(c);
+          Nenga.file(s, id, g.recognizeNenga(next));
+          sum.nenga++;
         } else if (step.equals("contact")) {
           progress.update("連絡先に登録中 " + label);
           JSONObject p = s.person(id);

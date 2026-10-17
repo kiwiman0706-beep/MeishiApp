@@ -72,6 +72,9 @@ const fields = [
   ["tags", "タグ"],
   ["metDate", "名刺交換日"],
   ["metPlace", "交換場所"],
+  ["genre", "ジャンル・業種"],
+  ["hours", "営業時間"],
+  ["holidays", "定休日"],
 ];
 let state = { people: [], model: "gemini-2.5-flash", format: "legacy" },
   route = "home",
@@ -94,7 +97,10 @@ const call = (action, params = {}) => {
 };
 const getPerson = () => state.people.find((p) => p.id === selected),
   title = (p) => p.name || p.suggestion?.name || "氏名未登録",
-  company = (p) => p.company || p.suggestion?.company || "会社・組織 未登録",
+  company = (p) =>
+    p.company || p.suggestion?.company || (p.kind === "shop" ? p.genre || "お店" : "会社・組織 未登録"),
+  shopOnly = ["genre", "hours", "holidays"],
+  visible = (p) => p.kind !== "nengaInbox",
   img = (f) => "/media/" + encodeURIComponent(f),
   status = (p) =>
     ({ new: "未認識", review: "要確認", confirmed: "確認済み" })[p.status] ||
@@ -160,7 +166,7 @@ function shutter() {
 }
 function nav() {
   const onList = ["home", "detail", "edit"].includes(route);
-  const onMenu = ["menu", "gemini"].includes(route);
+  const onMenu = ["menu", "gemini", "nenga"].includes(route);
   return `<nav class="nav"><button class="${onList ? "active" : ""}" onclick="go('home')">${icon("card")}名刺</button><button class="shutter" onclick="shutter()" oncontextmenu="event.preventDefault();bulkSheet()" aria-label="名刺を撮影">${icon("camera")}<span>撮影</span></button><button class="${onMenu ? "active" : ""}" onclick="go('menu')">${icon("menu")}メニュー</button></nav>`;
 }
 function render() {
@@ -171,6 +177,8 @@ function render() {
         ? menuPage()
         : route === "gemini"
           ? geminiPage()
+          : route === "nenga"
+            ? nengaPage()
           : route === "edit"
             ? editPage()
             : detail();
@@ -192,7 +200,8 @@ function filtered() {
   return state.people
     .filter(
       (p) =>
-        (filter === "all" || p.status === filter) &&
+        visible(p) &&
+        (filter === "all" || (filter === "shop" ? p.kind === "shop" : p.status === filter)) &&
         (!q ||
           [
             ...fields.map(([k]) => p[k]),
@@ -224,7 +233,7 @@ function listContent() {
   if (layout === "map") return mapView(a);
   if (layout === "table")
     return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" onclick="openPerson('${p.id}')"><td>${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
-  return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
+  return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
 }
 function home() {
   const count = (s) => state.people.filter((p) => p.status === s).length;
@@ -236,6 +245,7 @@ function home() {
     ["review", "要確認", count("review")],
     ["new", "未認識", count("new")],
     ["confirmed", "確認済み", count("confirmed")],
+    ["shop", "お店", state.people.filter((p) => p.kind === "shop").length],
   ]
     .filter(([v, , n]) => v === "all" || n || filter === v)
     .map(
@@ -251,10 +261,16 @@ function home() {
   const dupBanner = dupCount
     ? `<button class="setup" onclick="dupSheet()">${icon("link")}<span><b>重複の可能性 ${dupCount}件</b><small>統合・削除するか、別人として扱えます</small></span>${icon("next")}</button>`
     : "";
+  const month = new Date().getMonth();
+  const replyNeeded = state.people.filter((p) => got(p, season(), "received").length && !got(p, season(), "sent").length).length;
+  const nengaBanner =
+    month >= 10 || month === 0
+      ? `<button class="setup" onclick="go('nenga')">${icon("mail")}<span><b>${season()}年の年賀状</b><small>${replyNeeded ? `返礼が必要 ${replyNeeded}人` : "届いた年賀状を撮影して記録"}</small></span>${icon("next")}</button>`
+      : "";
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
     ["cards", "リスト", "list"],
     ["table", "表", "table"],
     ["calendar", "カレンダー", "clock"],
@@ -411,7 +427,7 @@ function mountMap() {
   mapSig = sig;
   cluster.clearLayers();
   for (const p of pts) {
-    const m = L.circleMarker([p.geo.lat, p.geo.lng], { radius: 8, color: "#fff", weight: 2, fillColor: "#176d61", fillOpacity: 0.9 });
+    const m = L.circleMarker([p.geo.lat, p.geo.lng], { radius: 8, color: "#fff", weight: 2, fillColor: p.kind === "shop" ? "#c8872e" : "#176d61", fillOpacity: 0.9 });
     m.bindPopup(
       `<b>${esc(title(p))}</b><br>${esc(company(p))}${p.metDate ? `<br><small>${esc(p.metDate.replace(/-/g, "/"))}</small>` : ""}<br><button class="link" onclick="openPerson('${p.id}')">名刺を開く</button>`,
     );
@@ -482,12 +498,13 @@ function detail() {
   }
   links = [];
   const info = fields.filter(([k]) => p[k] && !["name", "kana"].includes(k));
+  const nengaHtml = greetingsSection(p);
   const label = (i) => (i === 0 ? "表面" : i === 1 ? "裏面" : "追加 " + (i + 1));
   return `${backbar("", `<button onclick="beginEdit()" aria-label="編集">${icon("edit")}</button><button onclick="detailMenu()" aria-label="その他の操作">${icon("more")}</button>`)}${recordBanner()}${
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>連絡先情報</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section></div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button></div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button></div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
@@ -587,7 +604,7 @@ function editPage() {
   const p = getPerson();
   const warn = draft.fromSuggestion && p.suggestion?.warnings;
   const registered = !!p.contactRawId;
-  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><div class="grid2">${fields.map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace"].includes(k) ? "span2" : ""}"><span class="label">${l}</span>${["email", "phone", "mobile", "fax", "address"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存（Google連絡先にも反映）</button><p class="caption">このアプリで登録した連絡先を、ここでの内容で上書きします。</p>` : `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}`}</div>`;
+  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><label class="span2"><span class="label">種類</span><select onchange="draft.kind=this.value;render()"><option value="person" ${draft.kind !== "shop" ? "selected" : ""}>人の名刺</option><option value="shop" ${draft.kind === "shop" ? "selected" : ""}>お店のカード</option></select></label><div class="grid2">${fields.filter(([k]) => draft.kind === "shop" || !shopOnly.includes(k) || draft[k]).map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace", "genre", "hours", "holidays"].includes(k) ? "span2" : ""}"><span class="label">${k === "name" && draft.kind === "shop" ? "店名" : l}</span>${["email", "phone", "mobile", "fax", "address", "hours"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存（Google連絡先にも反映）</button><p class="caption">このアプリで登録した連絡先を、ここでの内容で上書きします。</p>` : `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}`}</div>`;
 }
 function savePerson(thenContact) {
   if (!String(draft.name || "").trim()) {
@@ -672,7 +689,7 @@ function dupes() {
   const n = (x) => String(x || "").normalize("NFKC").toLowerCase().replace(/[\s　]/g, "");
   const index = {};
   const add = (k, id) => (index[k] = index[k] || []).push(id);
-  for (const p of state.people) {
+  for (const p of state.people.filter(visible)) {
     for (const e of String(p.email || "").split(/[\n,;]/)) if (n(e).includes("@")) add("m:" + n(e), p.id);
     for (const t of String(p.mobile || "").split(/[\n,;]/)) {
       const d = t.replace(/\D/g, "");
@@ -839,6 +856,101 @@ function importZipSheet() {
     `<h2>${icon("download")} ZIPから一括取り込み</h2><p class="caption">名刺画像をまとめたZIPを読み込み、1人ずつに分けて保存します。読み取りはバックグラウンドのGeminiが行うので、終わるまで他の操作をしていて大丈夫です。</p><div class="tip"><b>画像だけのZIP</b><div class="step"><b>・</b><span>Eightの画像（<code>交換日_氏名_会社_ID.jpg</code>、裏は末尾<code>_裏</code>）は表裏を自動でまとめ、氏名・会社・交換日も入れます。</span></div><div class="step"><b>・</b><span><code>001_1.jpg</code>／<code>001_2.jpg</code>、<code>_表</code>／<code>_裏</code> の組も1人にまとめます。それ以外は1枚 = 1人。</span></div><b>CSV付きZIP</b>：CSVの項目と画像をそのまま登録します（仕様：docs/IMPORT_SPEC.md）。<br><b>同期形式のZIP</b>：<code>people/</code>（1人1つのJSON）と <code>media/</code> の組をそのまま登録します（仕様：docs/SYNC_SPEC.md）。</div><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後にGoogle連絡先へ登録</b><small>Eight等から既に連絡先へ入っているならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。読み取りの費用の目安は1人1円以下です。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
   );
 }
+// ---- New Year cards ------------------------------------------------------------------
+const nengaKinds = { nenga: "年賀状", mochu: "喪中", kanchu: "寒中見舞い", shochu: "暑中見舞い", other: "はがき" };
+const season = () => {
+  const d = new Date();
+  return d.getMonth() >= 9 ? d.getFullYear() + 1 : d.getFullYear();
+};
+let nengaYear = 0,
+  nengaFilter = "all",
+  nengaQuery = "";
+const greets = (p) => (Array.isArray(p.greetings) ? p.greetings : []);
+const got = (p, y, dir) => greets(p).filter((g) => g.year === y && g.dir === dir);
+const mourning = (p, y) => greets(p).some((g) => g.kind === "mochu" && (g.year === y || g.year === y - 1));
+function greetingsSection(p) {
+  if (p.kind === "shop") return "";
+  const list = [...greets(p)].sort((a, b) => b.year - a.year || (a.dir > b.dir ? 1 : -1));
+  const y = season();
+  const r = got(p, y, "received").length,
+    s = got(p, y, "sent").length;
+  return `<section class="panel"><h3>年賀状 <small>${list.length}件</small></h3><div class="row"><button class="${r ? "secondary" : "outline"}" onclick="toggleGreeting('${p.id}',${y},'received')">${r ? icon("check") : ""}${y}年 届いた</button><button class="${s ? "secondary" : "outline"}" onclick="toggleGreeting('${p.id}',${y},'sent')">${s ? icon("check") : ""}${y}年 送った</button></div>${list
+    .map(
+      (g) =>
+        `<div class="note"><div class="notehead"><div><small>${esc((g.date || "").replace(/-/g, "/"))}</small><div><b>${g.year}年</b> ${g.dir === "sent" ? "送った" : "届いた"}${g.kind && g.kind !== "nenga" ? ` ・ <span class="badge review">${esc(nengaKinds[g.kind] || "")}</span>` : ""}</div></div><div><button onclick="greetingDate('${p.id}','${g.id}','${esc(g.date || "")}')" aria-label="日付を変更">${icon("edit")}</button><button onclick="if(confirm('この記録を削除しますか？'))call('greetingEdit',{id:'${p.id}',gid:'${g.id}',remove:true})" aria-label="記録を削除">${icon("trash")}</button></div></div>${(g.files || []).length ? `<div class="gthumbs">${g.files.map((f) => `<img src="${img(f.file)}" alt="年賀状" onclick="viewFile('${esc(f.file)}')">`).join("")}</div>` : ""}${g.senders ? `<small>差出人：${esc(g.senders.replace(/\n/g, "・"))}</small>` : ""}${g.message ? `<p class="notebody">${esc(g.message)}</p>` : ""}</div>`,
+    )
+    .join("")}</section>`;
+}
+function toggleGreeting(id, year, dir) {
+  const p = state.people.find((x) => x.id === id);
+  const on = !got(p, year, dir).length;
+  if (!on && got(p, year, dir).some((g) => (g.files || []).length)) {
+    toast("画像付きの記録は、名刺の詳細の年賀状履歴から削除してください");
+    return;
+  }
+  call("greeting", { id, year, dir, on });
+}
+function greetingDate(id, gid, current) {
+  const v = prompt("日付（YYYY-MM-DD）", current || new Date().toLocaleDateString("sv-SE"));
+  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) call("greetingEdit", { id, gid, date: v });
+}
+function viewFile(file) {
+  modal(`<img src="${img(file)}" alt="拡大"><p style="font-size:12px">ピンチで拡大できます</p>`, true);
+}
+function nengaSearch(v) {
+  nengaQuery = v;
+  $("nlist").innerHTML = nengaList();
+}
+function nengaList() {
+  const y = nengaYear;
+  const people = state.people.filter((p) => visible(p) && p.kind !== "shop");
+  const q = nengaQuery.toLocaleLowerCase();
+  const list = q
+    ? people.filter((p) => [p.name, p.kana, p.company, p.address].join(" ").toLocaleLowerCase().includes(q))
+    : people.filter(nengaGroups(y)[nengaFilter]);
+  const row = (p) => {
+    const r = got(p, y, "received")[0],
+      s = got(p, y, "sent")[0];
+    const last = [got(p, y - 1, "sent").length ? "送" : "", got(p, y - 1, "received").length ? "届" : ""].filter(Boolean).join("・");
+    const day = (g) => `<small>${esc((g.date || "").slice(5).replace("-", "/"))}</small>`;
+    return `<div class="nrow"><button class="nwho" onclick="openPerson('${p.id}')"><b class="ell">${esc(title(p))}</b><small class="ell">${esc(p.company || p.address || "")}${last ? ` ・ 昨年 ${last}` : ""}${mourning(p, y) ? " ・ 喪中" : ""}</small></button><button class="ntog ${r ? "on" : ""}" onclick="toggleGreeting('${p.id}',${y},'received')">${r ? icon("check") : ""}届いた${r ? day(r) : ""}</button><button class="ntog ${s ? "on" : ""}" onclick="toggleGreeting('${p.id}',${y},'sent')">${s ? icon("check") : ""}送った${s ? day(s) : ""}</button></div>`;
+  };
+  return list.map(row).join("") || `<p class="caption center">${q ? "該当する人がいません" : "まだ記録がありません。届いた年賀状を撮影するか、名前で探して「送った」を記録してください。"}</p>`;
+}
+function nengaGroups(y) {
+  const any = (p, yr) => got(p, yr, "received").length || got(p, yr, "sent").length;
+  return {
+    all: (p) => any(p, y) || any(p, y - 1),
+    reply: (p) => got(p, y, "received").length && !got(p, y, "sent").length,
+    lastyear: (p) => any(p, y - 1) && !got(p, y, "sent").length && !mourning(p, y),
+    unanswered: (p) => got(p, y, "sent").length && !got(p, y, "received").length,
+    mochu: (p) => mourning(p, y),
+  };
+}
+function nengaPage() {
+  if (!nengaYear) nengaYear = season();
+  const y = nengaYear;
+  const people = state.people.filter((p) => visible(p) && p.kind !== "shop");
+  const years = new Set([season(), season() - 1]);
+  for (const p of people) for (const g of greets(p)) years.add(g.year);
+  const inbox = state.people.filter((p) => p.kind === "nengaInbox");
+  const groups = nengaGroups(y);
+  const count = (k) => people.filter(groups[k]).length;
+  const chip = (k, l) =>
+    `<button class="chip ${nengaFilter === k ? "active" : ""} ${k === "reply" && count(k) ? "attn" : ""}" onclick="nengaFilter='${k}';nengaQuery='';render()">${l} ${count(k)}</button>`;
+  return `${backbar("年賀状")}<div class="calhead"><select aria-label="年" onchange="nengaYear=Number(this.value);render()">${[...years]
+    .sort((a, b) => b - a)
+    .map((v) => `<option value="${v}" ${v === y ? "selected" : ""}>${v}年の年賀状</option>`)
+    .join("")}</select></div><div class="stats"><div><small>届いた</small><div><strong>${people.filter((p) => got(p, y, "received").length).length}</strong> <small>通</small></div></div><div class="statRight"><small>送った</small><div><strong>${people.filter((p) => got(p, y, "sent").length).length}</strong> <small>通</small></div></div></div><div class="mlist">${[
+    menuRow("camera", "届いた年賀状を撮影", "1通ずつ（両面を撮って完了）", `call('scan',{id:'',mode:'all',nenga:true,year:${y}})`),
+    menuRow("card", "まとめて撮影", "1通目の両面→2通目の両面…の順に", `call('bulkScan',{mode:'pair',nenga:true,year:${y}})`),
+    menuRow("image", "画像・PDFから取り込む", "スキャン済みの年賀状（2ページずつ = 1通）", `call('pick',{mode:'pair',nenga:true,year:${y}})`),
+  ].join("")}</div>${
+    inbox.length
+      ? `<div class="tip gap">${inbox.map((p) => `<div class="step"><b>${p.queue ? '<i class="spin"></i>' : "!"}</b><span>${p.queue ? "差出人を読み取り中…" : `読み取れませんでした${p.queueError ? "：" + esc(p.queueError) : ""} <button class="link" onclick="call('nengaRetry',{id:'${p.id}'})">再試行</button>`}</span></div>`).join("")}</div>`
+      : ""
+  }<div class="toolbar gap"><div class="search">${icon("search")}<input placeholder="名前・住所で探して記録" value="${esc(nengaQuery)}" oninput="nengaSearch(this.value)"></div></div><div class="chips">${chip("all", "やり取りあり")}${chip("reply", "返礼が必要")}${chip("lastyear", "昨年あり・今年未送")}${chip("unanswered", "送ったが未着")}${chip("mochu", "喪中")}</div><div class="nlist" id="nlist">${nengaList()}</div><button class="outline full gap" onclick="call('export',{kind:'nenga',year:${y}})">${icon("table")}${y}年の宛名リストをCSVで書き出す</button><p class="caption">宛名リストは、今年か昨年にやり取りのある人（郵便番号・住所・送受信・喪中）です。宛名印刷ソフトに読み込めます。</p>`;
+}
 function syncStart() {
   if (
     confirm(
@@ -870,7 +982,9 @@ function menuPage() {
       menuRow("edit", "手入力で追加", "画像なしで登録", "manualAdd()"),
       menuRow("download", "ZIPから一括取り込み", "名刺画像だけのZIP（Eightの画像など）・CSV付きZIP", "importZipSheet()"),
     ],
-  )}${section("読み取り", [
+  )}${section("年賀状", [
+    menuRow("mail", "年賀状", "届いた・送ったを年ごとに管理", "go('nenga')"),
+  ])}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
   ])}${section("同期", [
     state.syncEnabled
@@ -886,7 +1000,7 @@ function menuPage() {
     `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch 0.8.1 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch 0.9.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -949,7 +1063,7 @@ window.handleBack = () => {
     }
     return;
   }
-  if (route === "gemini") {
+  if (route === "gemini" || route === "nenga") {
     go("menu");
     return;
   }

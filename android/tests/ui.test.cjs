@@ -302,10 +302,62 @@ const p = (id, name, company, status = "confirmed") => ({
   assert.equal(await page.evaluate(() => document.querySelectorAll(".map").length), 1);
   await page.screenshot({ path: path.join(screenshotDir, "15-map.png") });
   await page.evaluate(() => { layout = "cards"; go("home"); });
+  // Shop cards: own filter chip, badge and shop-only fields in the editor.
+  const shop = p("shop-1", "炭火焼 さくら", "", "confirmed");
+  shop.kind = "shop";
+  shop.genre = "焼き鳥";
+  shop.hours = "17:00-23:00";
+  shop.holidays = "月曜";
+  shop.email = "shop@example.test";
+  demo.people.push(shop);
+  // New Year cards: one received 2027 card (with image), one sent last year.
+  const y = new Date().getMonth() >= 9 ? new Date().getFullYear() + 1 : new Date().getFullYear();
+  demo.people[0].greetings = [{ id: "g1", year: y, dir: "received", date: `${y}-01-02`, kind: "nenga", files: [], senders: "山田 太郎\n山田 花子" }];
+  demo.people[1].greetings = [{ id: "g2", year: y - 1, dir: "sent", date: `${y - 1}-12-20`, kind: "nenga", files: [] }];
+  demo.people.push({ ...p("inbox-1", "", ""), kind: "nengaInbox", queue: "nenga" });
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
+  assert.equal(await page.locator(".person", { hasText: "inbox" }).count(), 0); // inbox cards stay out of the list
+  await page.getByRole("button", { name: /^お店 1/ }).click();
+  assert.equal(await page.locator(".person").count(), 1);
+  await page.locator(".person").first().click();
+  assert(await page.getByText("お店の情報").isVisible());
+  assert(await page.getByText("17:00-23:00").isVisible());
+  await page.evaluate(() => beginEdit());
+  assert(await page.getByText("店名").isVisible());
+  assert(await page.getByText("定休日").isVisible());
+  await page.evaluate(() => { draft = null; filter = "all"; go("menu"); });
+  await page.getByRole("button", { name: /^年賀状 届いた・送った/ }).click();
+  assert.equal(await page.locator(".calhead select").inputValue(), String(y));
+  await page.screenshot({ path: path.join(screenshotDir, "17-nenga.png"), fullPage: true });
+  assert(await page.getByText("差出人を読み取り中").isVisible());
+  // "返礼が必要": received, not sent → mark sent.
+  await page.getByRole("button", { name: /返礼が必要 1/ }).click();
+  assert.equal(await page.locator(".nrow").count(), 1);
+  await page.locator(".nrow .ntog", { hasText: "送った" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "greeting", id: "demo-1", year: y, dir: "sent", on: true });
+  await page.getByRole("button", { name: /昨年あり・今年未送 1/ }).click();
+  assert(await page.locator(".nrow", { hasText: "佐藤" }).isVisible());
+  await page.getByPlaceholder("名前・住所で探して記録").fill("さくら");
+  assert.equal(await page.locator(".nrow").count(), 0); // shops are not New Year card recipients
+  await page.getByPlaceholder("名前・住所で探して記録").fill("佐藤");
+  assert.equal(await page.locator(".nrow").count(), 1);
+  await page.getByRole("button", { name: /届いた年賀状を撮影/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "scan", id: "", mode: "all", nenga: true, year: y });
+  await page.getByRole("button", { name: /宛名リストをCSV/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "export", kind: "nenga", year: y });
+  await page.evaluate(() => openPerson("demo-1"));
+  assert(await page.getByText("差出人：山田 太郎・山田 花子").isVisible());
+  demo.people = demo.people.filter((x) => !["shop-1", "inbox-1"].includes(x.id));
+  delete demo.people[0].greetings;
+  delete demo.people[1].greetings;
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); nengaQuery = ""; go("home"); }, demo);
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });
-    for (const r of ["home", "menu", "gemini"]) {
+    for (const r of ["home", "menu", "gemini", "nenga"]) {
       await page.evaluate((r) => go(r), r);
       assert(
         await page.evaluate(
@@ -339,7 +391,7 @@ const p = (id, name, company, status = "confirmed") => ({
   assert(!(await page.evaluate(() => window.pwned)));
   assert.equal(errors.length, 0, errors.join("\n"));
   console.log(
-    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings, Drive folder/import, calendar, map and 320–768px layout; HTML content escaping; no JS errors.",
+    "PASS: list/search/table, shutter, review→save→contact, menu import/export/settings, Drive folder/import, calendar, map, shops, New Year cards and 320–768px layout; HTML content escaping; no JS errors.",
   );
   await browser.close();
 })().catch((e) => {

@@ -21,7 +21,9 @@ Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイ
 ## people/<ID>.json
 
 - 中身は人物レコード（端末内 `data.json` の `people[]` の1要素）から、**端末固有の項目を除いたもの**。
-  - 除く項目：`contactRawId`, `contactAccount`, `contactPhoto`, `queue`, `queueError`, `contactDuplicate`, `suggestion`, `contactUnlinked`
+  - 除く項目：`contactRawId`, `contactAccount`, `contactPhoto`, `queue`, `queueError`, `contactDuplicate`, `suggestion`, `contactUnlinked`, `calendarEventId`
+- `kind` が `nengaInbox`（差出人を読み取る前の年賀状）のレコードは同期しない
+- 年賀状の画像は `greetings[].files[].file` で参照する（`media/` に置く）。統合時は `greetings` も id で和集合
   - 共有する印：`contactRegistered: true`（どこかの端末でGoogle連絡先に登録済み。他端末は自動登録しない）
 - 削除済み：`{"id": "<ID>", "deleted": true, "updated": <ms>}`、ハッシュは文字列 `deleted`。
 - 画像・録音の実体は `media/` に置き、レコードからはファイル名で参照する（`pages[].file`, `sources[].file`, `audio[].file`, `portrait`, `logo`）。録音中（`audio[].state == "recording"`）のファイルは共有しない。
@@ -131,6 +133,8 @@ Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイ
 | `pages` | 名刺画像。`file` は `media/` 内のファイル名（英数字・`_`・`-`・`.` のみ）。表→裏の順 |
 | `notes` | メモ。`id`（重複しない文字列）・`time`（ミリ秒）・`text` |
 | `audio` `sources` `portrait` `logo` | 任意。`file` は `media/` 内のファイル名 |
+| `kind` | 任意。`"shop"` でお店のカード（`genre` `hours` `holidays` も使える）。省略で人 |
+| `greetings` | 任意。年賀状の記録の配列：`{"id", "year": 2027, "dir": "received"または"sent", "date": "YYYY-MM-DD", "kind": "nenga"/"mochu"/"kanchu"/"shochu"/"other", "files": [{"file"}], "senders", "message"}`。`files` は `media/` 内のファイル名 |
 | `geo` | 任意。`{"lat": 緯度, "lng": 経度, "q": 住所と同じ文字列}` があれば地図の変換を省略 |
 
 `media/` に無いファイルを参照している場合、その画像だけ表示されず、取り込み結果にエラーとして出ます。

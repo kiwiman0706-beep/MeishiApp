@@ -95,6 +95,7 @@ public final class Sync {
     union(base, other, "audio", "file");
     union(base, other, "pages", "file");
     union(base, other, "sources", "file");
+    union(base, other, "greetings", "id");
     JSONArray nd = base.optJSONArray("notDuplicate"), ond = other.optJSONArray("notDuplicate");
     if (ond != null) {
       if (nd == null) base.put("notDuplicate", nd = new JSONArray());
@@ -129,6 +130,14 @@ public final class Sync {
         if (!o.optString("file").isEmpty()) files.add(o.getString("file"));
       }
     }
+    JSONArray greetings = p.optJSONArray("greetings");
+    if (greetings != null)
+      for (int i = 0; i < greetings.length(); i++) {
+        JSONArray fs = greetings.getJSONObject(i).optJSONArray("files");
+        if (fs != null)
+          for (int k = 0; k < fs.length(); k++)
+            if (!fs.getJSONObject(k).optString("file").isEmpty()) files.add(fs.getJSONObject(k).getString("file"));
+      }
     return files;
   }
 
@@ -202,7 +211,10 @@ public final class Sync {
 
     Map<String, JSONObject> local = new HashMap<>();
     JSONArray people = s.snapshot().getJSONArray("people");
-    for (int i = 0; i < people.length(); i++) local.put(people.getJSONObject(i).getString("id"), people.getJSONObject(i));
+    for (int i = 0; i < people.length(); i++)
+      // A New Year card still waiting to be matched to a person is not a record yet.
+      if (!people.getJSONObject(i).optString("kind").equals("nengaInbox"))
+        local.put(people.getJSONObject(i).getString("id"), people.getJSONObject(i));
     JSONObject tomb = s.tombstoneSnapshot();
 
     Set<String> ids = new TreeSet<>(local.keySet());
