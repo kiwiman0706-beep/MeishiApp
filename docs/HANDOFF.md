@@ -1,5 +1,14 @@
 # 開発引き継ぎ
 
+## 0.5.0での変更
+
+- **処理キュー**：人物の `queue` フィールド（"recognize" → "contact"）が未処理の工程。`Pipeline.run` が順に処理し、`ProcessingService`（前面サービス、dataSync）がそれを回す。プロセスが落ちても `onResume` で再開。429/401/403やAPIキー不備では中断し、キューを残す。
+- 自動読み取りでは `Pipeline.apply` が結果を直接反映（suggestionを経由しない）。氏名が空または warnings ありは `review`、それ以外は `confirmed`。手動の「読み取り直す」（`reread`）だけは従来どおり確認画面を経由。
+- 自動登録：`contactAccount` が端末上にあり、連絡先の権限がある時だけ。無い場合は `queueError` を付けてスキップし、アカウント設定時に `requeueContactless` で再投入。登録時にGoogle連絡先に同じ電話・メールの人がいれば `contactDuplicate` に名前を記録。
+- `Contacts.update` はこのアプリが作った連絡先のデータ行（氏名・組織・電話・メール・住所・Web・メモ）を置き換える。連絡先アプリ側で同じ項目を直した内容は上書きされる。`Contacts.remove` はマーカー行で自作の連絡先と確認してから削除。
+- 重複検出はUI（`dupes()`）で計算：メール、携帯番号（下10桁）、氏名＋会社（会社なしなら氏名のみ）。会社の代表番号は同僚と共有されるため使わない。「別人」は両者の `notDuplicate` に記録。統合は新しい名刺を基準にし、連絡先は1件だけ残す。
+- `BulkImport`：ZIP内のCSV（UTF-8/Shift_JIS）＋画像。列名は別名表で緩く対応。二重取り込みは `importKey`（ID列、無ければ氏名・会社・メール・表面画像名のハッシュ）で防ぐ。
+
 ## 0.4.0での変更
 
 - `Drive.java`：Drive REST v3の最小クライアント（フォルダ一覧、カード一覧、ダウンロード、「登録済み」作成、移動）。トークンはPlay servicesの `AuthorizationClient` から毎回取得し、保存しない。スコープは `drive`（ScanSnapが作ったファイルを移動するため）。

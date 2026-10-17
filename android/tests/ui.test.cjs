@@ -180,7 +180,7 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: /一覧をCSVで書き出す/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.equal(calls.findLast((c) => c.action === "export").kind, "csv");
-  await page.locator("input.switch").uncheck();
+  await page.locator("input.switch").first().uncheck();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "settings", autoRecognize: false });
   await page.getByRole("button", { name: /Gemini APIキー・モデル/ }).click();
@@ -214,6 +214,59 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.evaluate(() => onNative({ type: "batchDone", data: "2人・4ページを取り込みました。" }));
   assert.equal(await page.evaluate(() => filter), "review");
   await page.evaluate(() => { closeModal(); filter = "all"; render(); });
+  // Duplicates: same mobile number → banner → merge keeps the newer card as the base.
+  const dup = p("demo-3", "山田 太郎（サンプル）", "サンプル商事");
+  dup.mobile = "090-1234-5678";
+  dup.created = Date.now() + 1000;
+  demo.people[0].mobile = "09012345678";
+  demo.people[0].contactRawId = 11;
+  demo.people.push(dup);
+  demo.people.forEach((x, i) => (x.email = `demo${i}@example.test`));
+  demo.people[1].contactDuplicate = "佐藤 花子";
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
+  assert(await page.getByText("重複の可能性 2件").isVisible());
+  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  await page.screenshot({ path: path.join(screenshotDir, "10-duplicates.png") });
+  await page.getByRole("button", { name: "1人にまとめる" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "merge", id: "demo-3", sourceId: "demo-1" });
+  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  await page.getByRole("button", { name: "別人", exact: true }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.equal(calls.at(-1).action, "notDuplicate");
+  await page.getByRole("button", { name: /重複の可能性/ }).click();
+  await page.getByRole("button", { name: "問題なし" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "dismissContactDup", id: "demo-2" });
+  // Deleting a registered person offers removing the Google contact too.
+  await page.evaluate(() => { closeModal(); openPerson("demo-1"); deletePerson(); });
+  await page.getByRole("button", { name: /名刺と連絡先を削除/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "delete", id: "demo-1", withContact: true });
+  // Registered person: saving says it updates the Google contact.
+  await page.evaluate(() => beginEdit());
+  assert(await page.getByRole("button", { name: /Google連絡先にも反映/ }).isVisible());
+  await page.evaluate(() => { draft = null; go("menu"); });
+  await page.getByRole("button", { name: /まとめて撮影/ }).click();
+  await page.getByRole("button", { name: /表・裏の順に撮る/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "bulkScan", mode: "pair" });
+  await page.getByRole("button", { name: /Eightなどからインポート/ }).click();
+  await page.getByRole("button", { name: /ZIPファイルを選ぶ/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "importZip", toContacts: false });
+  // Queued people show progress and a background banner.
+  demo.people[2].queue = "recognize";
+  demo.processing = "読み取り中（残り1件）";
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); onNative({ type: "queued", data: { ids: ["demo-3"], skipped: 0, errors: [], pages: 2 } }); }, demo);
+  assert(await page.locator(".procbar").isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "11-processing.png") });
+  delete demo.processing;
+  delete demo.people[2].queue;
+  demo.people.pop();
+  delete demo.people[1].contactDuplicate;
+  delete demo.people[0].contactRawId;
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); closeModal(); go("home"); }, demo);
   // 320px to tablet: only explicit tables and carousel may overflow, never the whole viewport.
   for (const width of [320, 360, 393, 768]) {
     await page.setViewportSize({ width, height: 800 });

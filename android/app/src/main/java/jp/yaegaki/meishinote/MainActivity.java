@@ -37,12 +37,11 @@ public class MainActivity extends Activity {
       RESTORE = 15,
       ACCOUNT = 16,
       SCAN = 17,
-      DRIVE_AUTH = 18;
+      DRIVE_AUTH = 18,
+      IMPORT_ZIP = 19;
   // Full Drive scope: the ScanSnap folder and its files were not created by this app,
   // and moving them into 登録済み needs write access to them.
   static final String DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
-  DriveWork pendingDrive;
-  String pendingDriveTitle = "";
   AlertDialog scannerLoading;
   int scannerGeneration = 0;
 
@@ -207,6 +206,9 @@ public class MainActivity extends Activity {
           .put("contactAccount", prefs().getString("contactAccount", ""))
           .put("contactPhoto", prefs().getString("contactPhoto", "card"))
           .put("driveFolderName", prefs().getString("driveFolderName", ""))
+          .put("autoContact", prefs().getBoolean("autoContact", true))
+          .put("processing", ProcessingService.running ? ProcessingService.status : "")
+          .put("lastReport", prefs().getString("lastReport", ""))
           .put("driveFolderId", prefs().getString("driveFolderId", ""))
           .put("driveMode", prefs().getString("driveMode", "file"))
           .put("recording", RecordingService.activeId)
@@ -225,49 +227,40 @@ public class MainActivity extends Activity {
     return getSharedPreferences("prefs", 0);
   }
 
-  // New people from any import go straight on to Gemini when auto-recognition is on,
-  // so the user lands on the review screen (one person) or the 要確認 list (several).
+  // New people from any import are queued for background reading (and contact
+  // registration), so the user is free to scan the next card straight away.
   void afterImport(JSONObject imported, JSONObject q) throws Exception {
     JSONArray ids = imported.getJSONArray("ids");
     boolean auto =
         q.optString("id").isEmpty()
             && ids.length() > 0
-            && prefs().getBoolean("autoRecognize", true);
-    if (!auto || !prefs().contains("key")) {
+            && prefs().getBoolean("autoRecognize", true)
+            && prefs().contains("key");
+    if (!auto) {
       event("imported", imported);
-      if (auto && q.optBoolean("auto")) event("toast", "APIキーを設定すると、取り込み後に自動で読み取ります");
-      return;
-    }
-    if (ids.length() == 1) {
-      String id = ids.getString(0);
-      event("busy", "Geminiで名刺を読み取り中");
-      try {
-        recognizeOne(id, new Gemini(this));
-        event("review", id);
-        if (imported.optInt("skipped") > 0 || imported.getJSONArray("errors").length() > 0)
-          event("report", importSummary(imported));
-      } catch (Exception e) {
-        event("open", id);
-        event("report", "画像は保存しました。読み取りに失敗したため、詳細画面の「Geminiで読み取る」から再試行してください。\n\n" + e.getMessage());
-      }
+      if (q.optBoolean("auto") && !prefs().contains("key"))
+        event("toast", "APIキーを設定すると、取り込み後に自動で読み取ります");
       return;
     }
     List<String> list = new ArrayList<>();
     for (int i = 0; i < ids.length(); i++) list.add(ids.getString(i));
-    event("batchDone", importSummary(imported) + "\n\n" + recognizeIds(list));
+    Pipeline.enqueue(store, list, "recognize");
+    startProcessing();
+    event("queued", imported);
   }
 
-  static String importSummary(JSONObject r) throws Exception {
-    StringBuilder b =
-        new StringBuilder(r.getJSONArray("ids").length() + "人・" + r.optInt("pages") + "ページを取り込みました。");
-    if (r.optInt("skipped") > 0) b.append("\n取り込み済みのためスキップ：").append(r.optInt("skipped")).append("ファイル");
-    if (r.optInt("moved") > 0) b.append("\n「" + Drive.DONE_FOLDER + "」へ移動：").append(r.optInt("moved")).append("ファイル");
-    JSONArray errors = r.getJSONArray("errors");
-    if (errors.length() > 0) {
-      b.append("\n\n取り込めなかったファイル：");
-      for (int i = 0; i < errors.length(); i++) b.append("\n").append(errors.getString(i));
-    }
-    return b.toString();
+  void startProcessing() {
+    runOnUiThread(
+        () -> {
+          ProcessingService.start(this);
+          // The finished-batch summary arrives as a notification; ask once on Android 13+.
+          if (Build.VERSION.SDK_INT >= 33
+              && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+              && !prefs().getBoolean("askedNotify", false)) {
+            prefs().edit().putBoolean("askedNotify", true).apply();
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 46);
+          }
+        });
   }
 
   void recognizeOne(String id, Gemini g) throws Exception {
@@ -277,37 +270,63 @@ public class MainActivity extends Activity {
     store.put(p);
   }
 
-  // Stops early on quota/auth errors so a bad key does not burn through every card.
-  String recognizeIds(List<String> ids) throws Exception {
-    Gemini g = new Gemini(this);
-    int done = 0, failed = 0;
-    StringBuilder errors = new StringBuilder();
-    for (String id : ids) {
-      String name = store.person(id).optString("name");
-      event("busy", "Geminiで読み取り中 " + (done + failed + 1) + " / " + ids.size() + "\n" + name);
-      try {
-        recognizeOne(id, g);
-        done++;
-      } catch (Exception e) {
-        failed++;
-        errors.append("\n").append(name.isEmpty() ? "未登録" : name).append(": ").append(e.getMessage());
-        String m = e.getMessage() == null ? "" : e.getMessage();
-        if (m.contains("429") || m.contains("403") || m.contains("401")) {
-          errors.append("\n利用上限または認証エラーのため中断しました。残りはメニューの「未認識をまとめて読み取る」から再開できます。");
-          break;
-        }
-      }
+  // First use of auto-registration: grant contacts access and pick the account once,
+  // up front, so the background queue never has to ask.
+  Runnable afterAccount;
+
+  void ensureContactSetup(Runnable then) {
+    if (!Pipeline.autoContact(this)
+        || !prefs().getBoolean("autoRecognize", true)
+        || !prefs().contains("key")) {
+      then.run();
+      return;
     }
-    return "読み取り完了 " + done + "件 / 失敗 " + failed + "件\n「要確認」から1人ずつ確認して保存してください。" + errors;
+    contactSetup(then);
+  }
+
+  void contactSetup(Runnable then) {
+    permission(
+        new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+        () -> {
+          if (!Pipeline.contactAccount(this).isEmpty()) {
+            then.run();
+            return;
+          }
+          afterAccount = then;
+          try {
+            setPending(new JSONObject().put("setupOnly", true));
+          } catch (Exception ignored) {
+          }
+          startActivityForResult(
+              AccountManager.newChooseAccountIntent(
+                  null, null, new String[] {"com.google"}, "自動登録先のGoogleアカウントを選択", null, null, null),
+              ACCOUNT);
+        });
+  }
+
+  // People whose registration was skipped for lack of an account get another go.
+  void requeueContactless() throws Exception {
+    JSONArray a = store.snapshot().getJSONArray("people");
+    List<String> ids = new ArrayList<>();
+    for (int i = 0; i < a.length(); i++) {
+      JSONObject p = a.getJSONObject(i);
+      if (p.optString("queueError").contains("アカウント")) ids.add(p.getString("id"));
+    }
+    if (!ids.isEmpty()) {
+      Pipeline.enqueue(store, ids, "contact");
+      startProcessing();
+    }
   }
 
   // Authorization is re-requested before each Drive job: it is silent once granted and
   // hands back a fresh short-lived token, so nothing needs to be stored.
-  void withDrive(String title, DriveWork work) {
-    if (busy || scannerLoading != null) {
-      event("toast", "処理が終わるまでお待ちください");
-      return;
-    }
+  interface TokenWork {
+    void run(String token) throws Exception;
+  }
+
+  TokenWork pendingToken;
+
+  void withDriveToken(TokenWork work) {
     AuthorizationRequest req =
         AuthorizationRequest.builder()
             .setRequestedScopes(Collections.singletonList(new Scope(DRIVE_SCOPE)))
@@ -317,26 +336,37 @@ public class MainActivity extends Activity {
         .addOnSuccessListener(
             r -> {
               if (r.hasResolution()) {
-                pendingDrive = work;
-                pendingDriveTitle = title;
+                pendingToken = work;
                 try {
                   startIntentSenderForResult(
                       r.getPendingIntent().getIntentSender(), DRIVE_AUTH, null, 0, 0, 0);
                 } catch (Exception e) {
-                  pendingDrive = null;
+                  pendingToken = null;
                   error(e);
                 }
-              } else runDrive(title, work, r.getAccessToken());
+              } else runToken(work, r.getAccessToken());
             })
         .addOnFailureListener(e -> event("error", driveSetupHelp(e)));
   }
 
-  void runDrive(String title, DriveWork work, String token) {
+  void runToken(TokenWork work, String token) {
     if (token == null || token.isEmpty()) {
       event("error", "Google Driveの許可を取得できませんでした。もう一度お試しください。");
       return;
     }
-    task(title, () -> work.run(new Drive(token)));
+    try {
+      work.run(token);
+    } catch (Exception e) {
+      error(e);
+    }
+  }
+
+  void withDrive(String title, DriveWork work) {
+    if (busy || scannerLoading != null) {
+      event("toast", "処理が終わるまでお待ちください");
+      return;
+    }
+    withDriveToken(token -> task(title, () -> work.run(new Drive(token))));
   }
 
   static String driveSetupHelp(Exception e) {
@@ -344,95 +374,6 @@ public class MainActivity extends Activity {
         + "初回はGoogle Cloudで、このアプリ用のOAuthクライアント（Android）登録が必要です。"
         + "手順はリポジトリの docs/DRIVE_SETUP.md を参照してください。\n\n詳細: "
         + e.getMessage();
-  }
-
-  void driveImport(Drive d) throws Exception {
-    String folder = prefs().getString("driveFolderId", "");
-    if (folder.isEmpty()) throw new IOException("先にメニューからGoogle Driveのフォルダを設定してください");
-    String mode = prefs().getString("driveMode", "file");
-    event("busy", "Google Driveを確認中");
-    JSONArray files = d.cards(folder);
-    if (files.length() == 0) {
-      event("toast", "新しい名刺はありません");
-      return;
-    }
-    if (files.length() > 200) throw new IOException("1回の取り込みは200ファイルまでです。フォルダ内を減らしてください");
-    String done = d.subfolder(folder, Drive.DONE_FOLDER);
-    Importer importer = new Importer(this);
-    JSONArray ids = new JSONArray(), errors = new JSONArray();
-    int pages = 0, skipped = 0, moved = 0;
-    // Pairing across files needs the whole batch at once; every other mode goes file by file
-    // so each file is moved only after its own import succeeded.
-    boolean perFile = !mode.equals("pair") && !mode.equals("all");
-    List<File> staged = new ArrayList<>();
-    List<Uri> uris = new ArrayList<>();
-    List<JSONObject> metas = new ArrayList<>();
-    try {
-      for (int i = 0; i < files.length(); i++) {
-        JSONObject f = files.getJSONObject(i);
-        String name = f.optString("name");
-        event("busy", "Google Driveから取得中 " + (i + 1) + " / " + files.length() + "\n" + name);
-        String ext = name.toLowerCase(Locale.ROOT).replaceAll("^.*(\\.[a-z0-9]{1,5})$", "$1");
-        if (!ext.matches("\\.[a-z0-9]{1,5}"))
-          ext = f.optString("mimeType").equals("application/pdf") ? ".pdf" : ".jpg";
-        File local = new File(getCacheDir(), "drive-" + UUID.randomUUID() + ext);
-        staged.add(local);
-        try {
-          d.download(f.getString("id"), local);
-        } catch (Exception e) {
-          errors.put(name + ": " + e.getMessage());
-          continue;
-        }
-        Uri u = FilesProvider.uri(this, local);
-        importer.names.put(u.toString(), name);
-        if (!perFile) {
-          uris.add(u);
-          metas.add(f);
-          continue;
-        }
-        JSONObject r = importer.run(Collections.singletonList(u), "file", "", t -> {}, true);
-        JSONArray e = r.getJSONArray("errors");
-        for (int k = 0; k < e.length(); k++) errors.put(e.get(k));
-        for (int k = 0; k < r.getJSONArray("ids").length(); k++) ids.put(r.getJSONArray("ids").get(k));
-        pages += r.optInt("pages");
-        skipped += r.optInt("skipped");
-        if (e.length() == 0) moved += moveDone(d, f, folder, done, errors);
-      }
-      if (!perFile && errors.length() > 0)
-        throw new IOException(
-            "組み合わせがずれないよう、この回の取り込みを中止しました（Driveのファイルは移動していません）。\n" + errors.toString());
-      if (!perFile && !uris.isEmpty()) {
-        event("busy", "名刺を保存中");
-        JSONObject r = importer.run(uris, mode, "", t -> event("busy", t), true);
-        ids = r.getJSONArray("ids");
-        pages = r.optInt("pages");
-        skipped = r.optInt("skipped");
-        JSONArray e = r.getJSONArray("errors");
-        for (int k = 0; k < e.length(); k++) errors.put(e.get(k));
-        // Importer aborts the whole pair batch on any bad file, so reaching here means all saved.
-        for (JSONObject f : metas) moved += moveDone(d, f, folder, done, errors);
-      }
-    } finally {
-      for (File f : staged) f.delete();
-    }
-    afterImport(
-        new JSONObject()
-            .put("ids", ids)
-            .put("pages", pages)
-            .put("skipped", skipped)
-            .put("moved", moved)
-            .put("errors", errors),
-        new JSONObject());
-  }
-
-  int moveDone(Drive d, JSONObject f, String from, String to, JSONArray errors) {
-    try {
-      d.move(f.getString("id"), from, to);
-      return 1;
-    } catch (Exception e) {
-      errors.put(f.optString("name") + "：取り込みましたが「" + Drive.DONE_FOLDER + "」へ移動できませんでした（" + e.getMessage() + "）");
-      return 0;
-    }
   }
 
   void task(String title, Work work) {
@@ -531,7 +472,10 @@ public class MainActivity extends Activity {
                 "restore",
                 "export",
                 "contacts",
-                "driveImport")
+                "driveImport",
+                "importZip",
+                "bulkScan",
+                "quickScan")
             .contains(action)) throw new IOException("この操作の前に録音を停止してください。メモの追加・編集は録音中もできます。");
     String id = q.optString("id");
     switch (action) {
@@ -544,16 +488,90 @@ public class MainActivity extends Activity {
           break;
         }
       case "save":
-        store.edit(id, q.getJSONObject("person"));
-        refresh();
-        event("saved", id);
-        if (q.optBoolean("thenContact")) handle("contacts", q);
-        break;
+        {
+          store.edit(id, q.getJSONObject("person"));
+          JSONObject p = store.person(id);
+          p.remove("queueError");
+          store.put(p);
+          refresh();
+          event("saved", id);
+          // Edits reach the Google contact this app created; unregistered people can opt in.
+          if (Contacts.registered(this, p))
+            permission(
+                new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+                () ->
+                    task(
+                        "連絡先を更新中",
+                        () -> {
+                          Contacts.update(this, store.person(id));
+                          event("toast", "Google連絡先にも反映しました");
+                        }));
+          else if (q.optBoolean("thenContact")) handle("contacts", q);
+          break;
+        }
       case "delete":
-        if (id.equals(RecordingService.activeId)) throw new IOException("録音を停止してから削除してください");
-        store.remove(id);
-        refresh();
-        event("home", "");
+        {
+          if (id.equals(RecordingService.activeId)) throw new IOException("録音を停止してから削除してください");
+          JSONObject p = store.person(id);
+          if (q.optBoolean("withContact") && p.has("contactRawId")) {
+            permission(
+                new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+                () ->
+                    task(
+                        "削除中",
+                        () -> {
+                          Contacts.remove(this, store.person(id));
+                          store.remove(id);
+                          event("home", "");
+                          event("toast", "名刺と連絡先を削除しました");
+                        }));
+            break;
+          }
+          store.remove(id);
+          refresh();
+          event("home", "");
+          break;
+        }
+      case "notDuplicate":
+        {
+          // Remember "different people" on both sides so the pair is not flagged again.
+          String other = q.getString("other");
+          for (String[] pair : new String[][] {{id, other}, {other, id}}) {
+            JSONObject p = store.person(pair[0]);
+            JSONArray a = p.optJSONArray("notDuplicate");
+            if (a == null) p.put("notDuplicate", a = new JSONArray());
+            a.put(pair[1]);
+            store.put(p);
+          }
+          refresh();
+          break;
+        }
+      case "dismissContactDup":
+        {
+          JSONObject p = store.person(id);
+          p.remove("contactDuplicate");
+          store.put(p);
+          refresh();
+          break;
+        }
+      case "unlinkContact":
+        // Keeps the card, removes the contact this app added (the pre-existing one stays).
+        permission(
+            new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+            () ->
+                task(
+                    "連絡先を取り消し中",
+                    () -> {
+                      JSONObject p = store.person(id);
+                      Contacts.remove(this, p);
+                      p.remove("contactRawId");
+                      p.remove("contactAccount");
+                      p.remove("contactPhoto");
+                      p.remove("contactDuplicate");
+                      p.put("contactUnlinked", true);
+                      store.put(p);
+                      event("toast", "このアプリで追加した連絡先を削除しました");
+                    }));
         break;
       case "note":
         store.note(id, q.getString("text"));
@@ -627,9 +645,34 @@ public class MainActivity extends Activity {
       case "merge":
         {
           if (!RecordingService.activeId.isEmpty()) throw new IOException("録音を停止してください");
-          store.mergePeople(id, q.getString("sourceId"));
-          refresh();
-          event("open", id);
+          String sourceId = q.getString("sourceId");
+          JSONObject target = store.person(id), source = store.person(sourceId);
+          boolean targetLinked = Contacts.registered(this, target),
+              sourceLinked = Contacts.registered(this, source);
+          store.mergePeople(id, sourceId);
+          if (!targetLinked && !sourceLinked) {
+            refresh();
+            event("open", id);
+            break;
+          }
+          // One Google contact survives: the target's, or the source's taken over.
+          permission(
+              new String[] {Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS},
+              () ->
+                  task(
+                      "連絡先を統合中",
+                      () -> {
+                        JSONObject t = store.person(id);
+                        if (targetLinked && sourceLinked) Contacts.remove(this, source);
+                        else if (sourceLinked)
+                          t.put("contactRawId", source.getLong("contactRawId"))
+                              .put("contactAccount", source.optString("contactAccount"));
+                        t.remove("contactDuplicate");
+                        store.put(t);
+                        Contacts.update(this, store.person(id));
+                        event("open", id);
+                        event("toast", "名刺と連絡先を統合しました");
+                      }));
           break;
         }
       case "pick":
@@ -688,10 +731,32 @@ public class MainActivity extends Activity {
         refresh();
         break;
       case "driveImport":
-        withDrive("Google Driveから取り込み中", this::driveImport);
+        withDriveToken(
+            token -> {
+              ProcessingService.startDrive(this, token);
+              event("toast", "Google Driveから取り込みます（バックグラウンド）");
+            });
         break;
       case "quickScan":
-        startScanner(q.put("mode", "all").put("id", "").put("auto", true));
+        q.put("mode", "all").put("id", "").put("auto", true);
+        ensureContactSetup(() -> startScanner(q));
+        break;
+      case "bulkScan":
+        {
+          String mode = q.optString("mode", "pair");
+          if (!mode.equals("pair") && !mode.equals("page")) throw new IOException("不正なまとめ方");
+          q.put("id", "").put("auto", true);
+          ensureContactSetup(() -> startScanner(q));
+          break;
+        }
+      case "importZip":
+        setPending(q);
+        startActivityForResult(
+            new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .setType("*/*")
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"application/zip", "application/x-zip-compressed", "application/octet-stream"}),
+            IMPORT_ZIP);
         break;
       case "camera":
         {
@@ -736,7 +801,18 @@ public class MainActivity extends Activity {
             e.putString("contactPhoto", photo);
           }
           if (q.optBoolean("clearAccount")) e.remove("contactAccount");
+          if (q.has("autoContact")) e.putBoolean("autoContact", q.getBoolean("autoContact"));
           e.apply();
+          if (q.optBoolean("autoContact"))
+            contactSetup(
+                () -> {
+                  try {
+                    requeueContactless();
+                    refresh();
+                  } catch (Exception ex) {
+                    error(ex);
+                  }
+                });
           refresh();
           event("toast", "設定を保存しました");
           break;
@@ -745,31 +821,40 @@ public class MainActivity extends Activity {
         task("利用可能なモデルを取得中", () -> event("models", new Gemini(this).models()));
         break;
       case "recognize":
+        {
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          Pipeline.enqueue(store, Collections.singletonList(id), "recognize");
+          refresh();
+          startProcessing();
+          event("toast", "読み取り中（バックグラウンド）。終わると自動で反映します");
+          break;
+        }
+      case "reread":
+        // Re-reading a card that already has data goes through the review form, never auto-overwrites.
         task(
             "Geminiで名刺を読み取り中",
             () -> {
-              JSONObject p = store.person(id);
-              JSONObject result = new Gemini(this).recognize(p);
-              p = store.person(id);
-              p.put("suggestion", result).put("status", "review");
-              store.put(p);
+              recognizeOne(id, new Gemini(this));
               event("review", id);
             });
         break;
       case "recognizeAll":
-        task(
-            "未認識の名刺を読み取り中",
-            () -> {
-              JSONArray a = store.snapshot().getJSONArray("people");
-              List<String> ids = new ArrayList<>();
-              for (int i = 0; i < a.length(); i++) {
-                JSONObject p = a.getJSONObject(i);
-                if (p.optString("status").equals("new") && p.getJSONArray("pages").length() > 0)
-                  ids.add(p.getString("id"));
-              }
-              event("batchDone", recognizeIds(ids));
-            });
-        break;
+        {
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          JSONArray a = store.snapshot().getJSONArray("people");
+          List<String> ids = new ArrayList<>();
+          for (int i = 0; i < a.length(); i++) {
+            JSONObject p = a.getJSONObject(i);
+            if (p.optString("status").equals("new")
+                && p.getJSONArray("pages").length() > 0
+                && p.optString("queue").isEmpty()) ids.add(p.getString("id"));
+          }
+          Pipeline.enqueue(store, ids, "recognize");
+          refresh();
+          startProcessing();
+          event("toast", ids.size() + "件をバックグラウンドで読み取ります");
+          break;
+        }
       case "applyRecognition":
         {
           JSONObject p = store.person(id), result = p.getJSONObject("suggestion");
@@ -1141,15 +1226,16 @@ public class MainActivity extends Activity {
   protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
     if (request == DRIVE_AUTH) {
-      DriveWork work = pendingDrive;
-      pendingDrive = null;
-      if (result != RESULT_OK || work == null) {
-        if (work == null && result == RESULT_OK) event("toast", "許可しました。もう一度操作してください");
+      TokenWork work = pendingToken;
+      pendingToken = null;
+      if (result != RESULT_OK) return;
+      if (work == null) {
+        event("toast", "許可しました。もう一度操作してください");
         return;
       }
       try {
         AuthorizationResult r = Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data);
-        runDrive(pendingDriveTitle, work, r.getAccessToken());
+        runToken(work, r.getAccessToken());
       } catch (Exception e) {
         event("error", driveSetupHelp(e));
       }
@@ -1258,12 +1344,42 @@ public class MainActivity extends Activity {
               event("report", count + "件を復元しました。同じIDの名刺は現在の内容を優先してスキップしました。");
             });
       }
+      if (request == IMPORT_ZIP && data != null && data.getData() != null) {
+        Uri u = data.getData();
+        boolean toContacts = q.optBoolean("toContacts");
+        Runnable go =
+            () ->
+                task(
+                    "インポート中",
+                    () -> {
+                      JSONObject r = BulkImport.run(this, u, toContacts, t -> event("busy", t));
+                      if (r.optInt("queued") > 0) startProcessing();
+                      StringBuilder b = new StringBuilder(r.optInt("added") + "人を追加しました（画像 " + r.optInt("images") + "枚）");
+                      if (r.optInt("skipped") > 0) b.append("\n取り込み済みのためスキップ：").append(r.optInt("skipped")).append("人");
+                      if (r.optInt("queued") > 0) b.append("\nバックグラウンドで読み取り・連絡先登録：").append(r.optInt("queued")).append("人");
+                      JSONArray e = r.getJSONArray("errors");
+                      for (int k = 0; k < Math.min(e.length(), 30); k++) b.append("\n").append(e.getString(k));
+                      if (e.length() > 30) b.append("\n…ほか").append(e.length() - 30).append("件");
+                      event("home", "");
+                      event("report", b.toString());
+                    });
+        if (toContacts) contactSetup(go);
+        else go.run();
+      }
       if (request == ACCOUNT && data != null) {
         String account = data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME),
             type = data.getStringExtra(AccountManager.KEY_ACCOUNT_TYPE);
         if (account == null || !"com.google".equals(type))
           throw new IOException("Googleアカウントを選択してください");
         prefs().edit().putString("contactAccount", account).apply();
+        if (q.optBoolean("setupOnly")) {
+          Runnable next = afterAccount;
+          afterAccount = null;
+          requeueContactless();
+          refresh();
+          if (next != null) next.run();
+          return;
+        }
         registerContact(q, account);
       }
     } catch (Exception e) {
@@ -1275,6 +1391,11 @@ public class MainActivity extends Activity {
   protected void onResume() {
     super.onResume();
     if (store != null && ready) refresh();
+    try {
+      if (store != null && !ProcessingService.running && Pipeline.pending(store) > 0 && prefs().contains("key"))
+        ProcessingService.start(this);
+    } catch (Exception ignored) {
+    }
   }
 
   @Override

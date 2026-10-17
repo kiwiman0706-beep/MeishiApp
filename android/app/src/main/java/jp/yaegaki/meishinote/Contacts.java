@@ -75,20 +75,29 @@ public final class Contacts {
     return "";
   }
 
-  public static long add(Context c, JSONObject p, String account, String photo) throws Exception {
-    ArrayList<ContentProviderOperation> ops = new ArrayList<>();
+  // Data rows this app owns on its raw contact; update() replaces exactly these kinds.
+  static final String[] OWNED = {
+    StructuredName.CONTENT_ITEM_TYPE,
+    Organization.CONTENT_ITEM_TYPE,
+    Phone.CONTENT_ITEM_TYPE,
+    Email.CONTENT_ITEM_TYPE,
+    StructuredPostal.CONTENT_ITEM_TYPE,
+    Website.CONTENT_ITEM_TYPE,
+    Note.CONTENT_ITEM_TYPE
+  };
+
+  interface Row {
+    ContentProviderOperation.Builder make(String mime);
+  }
+
+  static void rows(JSONObject p, ArrayList<ContentProviderOperation> ops, Row row) {
     ops.add(
-        ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, "com.google")
-            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, account)
-            .build());
-    ops.add(
-        data(0, StructuredName.CONTENT_ITEM_TYPE)
+        row.make(StructuredName.CONTENT_ITEM_TYPE)
             .withValue(StructuredName.DISPLAY_NAME, p.optString("name"))
             .withValue(StructuredName.PHONETIC_GIVEN_NAME, p.optString("kana"))
             .build());
     ops.add(
-        data(0, Organization.CONTENT_ITEM_TYPE)
+        row.make(Organization.CONTENT_ITEM_TYPE)
             .withValue(Organization.COMPANY, p.optString("company"))
             .withValue(Organization.DEPARTMENT, p.optString("department"))
             .withValue(Organization.TITLE, p.optString("title"))
@@ -98,7 +107,7 @@ public final class Contacts {
       for (String v : p.optString(field).split("[\n,;]"))
         if (!v.trim().isEmpty())
           ops.add(
-              data(0, Phone.CONTENT_ITEM_TYPE)
+              row.make(Phone.CONTENT_ITEM_TYPE)
                   .withValue(Phone.NUMBER, v.trim())
                   .withValue(
                       Phone.TYPE,
@@ -109,29 +118,72 @@ public final class Contacts {
     for (String v : p.optString("email").split("[\n,;]"))
       if (!v.trim().isEmpty())
         ops.add(
-            data(0, Email.CONTENT_ITEM_TYPE)
+            row.make(Email.CONTENT_ITEM_TYPE)
                 .withValue(Email.ADDRESS, v.trim())
                 .withValue(Email.TYPE, Email.TYPE_WORK)
                 .build());
     if (!p.optString("address").isEmpty() || !p.optString("postal").isEmpty())
       ops.add(
-          data(0, StructuredPostal.CONTENT_ITEM_TYPE)
+          row.make(StructuredPostal.CONTENT_ITEM_TYPE)
               .withValue(StructuredPostal.FORMATTED_ADDRESS, p.optString("address"))
               .withValue(StructuredPostal.POSTCODE, p.optString("postal"))
               .withValue(StructuredPostal.TYPE, StructuredPostal.TYPE_WORK)
               .build());
     if (!p.optString("website").isEmpty())
       ops.add(
-          data(0, Website.CONTENT_ITEM_TYPE)
+          row.make(Website.CONTENT_ITEM_TYPE)
               .withValue(Website.URL, p.optString("website"))
               .withValue(Website.TYPE, Website.TYPE_WORK)
               .build());
     ops.add(
-        data(0, Note.CONTENT_ITEM_TYPE)
+        row.make(Note.CONTENT_ITEM_TYPE)
             .withValue(
                 Note.NOTE,
-                "名刺ノートから登録\n交換日: " + p.optString("metDate") + "\n交換場所: " + p.optString("metPlace"))
+                "Meishi-Claudeから登録\n交換日: " + p.optString("metDate") + "\n交換場所: " + p.optString("metPlace"))
             .build());
+  }
+
+  // Rewrites the contact this app created so edits made in the app reach Google.
+  // Edits made directly in the Contacts app to these fields are overwritten.
+  public static void update(Context c, JSONObject p) throws Exception {
+    long rawId = p.optLong("contactRawId", -1);
+    if (rawId < 0 || !registered(c, p)) throw new IOException("登録した連絡先が見つかりません（連絡先アプリで削除された可能性があります）");
+    ArrayList<ContentProviderOperation> ops = new ArrayList<>();
+    for (String mime : OWNED)
+      ops.add(
+          ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
+              .withSelection(
+                  ContactsContract.Data.RAW_CONTACT_ID + "=? AND " + ContactsContract.Data.MIMETYPE + "=?",
+                  new String[] {"" + rawId, mime})
+              .build());
+    rows(
+        p,
+        ops,
+        mime ->
+            ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+                .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawId)
+                .withValue(ContactsContract.Data.MIMETYPE, mime));
+    c.getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
+  }
+
+  // Deletes only a contact this app created (checked by its marker row); sync removes it from Google.
+  public static void remove(Context c, JSONObject p) throws Exception {
+    if (!registered(c, p)) return;
+    c.getContentResolver()
+        .delete(
+            ContentUris.withAppendedId(ContactsContract.RawContacts.CONTENT_URI, p.getLong("contactRawId")),
+            null,
+            null);
+  }
+
+  public static long add(Context c, JSONObject p, String account, String photo) throws Exception {
+    ArrayList<ContentProviderOperation> ops = new ArrayList<>();
+    ops.add(
+        ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
+            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, "com.google")
+            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, account)
+            .build());
+    rows(p, ops, mime -> data(0, mime));
     ops.add(data(0, MARKER).withValue(ContactsContract.Data.DATA1, p.getString("id")).build());
     ContentProviderResult[] results =
         c.getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);

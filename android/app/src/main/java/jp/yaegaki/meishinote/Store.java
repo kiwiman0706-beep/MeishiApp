@@ -178,7 +178,10 @@ public final class Store {
     for (String k : new String[] {"portrait", "logo"})
       if (target.optString(k).isEmpty() && !source.optString(k).isEmpty())
         target.put(k, source.getString(k));
-    target.put("status", "new").put("updated", System.currentTimeMillis());
+    // Keep the target's review state: its details were already checked (or are queued).
+    if (target.optString("status").isEmpty()) target.put("status", "new");
+    target.put("updated", System.currentTimeMillis());
+    target.remove("contactDuplicate");
     target.remove("suggestion");
     JSONArray all = db.getJSONArray("people");
     for (int i = 0; i < all.length(); i++)

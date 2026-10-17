@@ -161,7 +161,7 @@ function shutter() {
 function nav() {
   const onList = ["home", "detail", "edit"].includes(route);
   const onMenu = ["menu", "gemini"].includes(route);
-  return `<nav class="nav"><button class="${onList ? "active" : ""}" onclick="go('home')">${icon("card")}名刺</button><button class="shutter" onclick="shutter()" aria-label="名刺を撮影">${icon("camera")}<span>撮影</span></button><button class="${onMenu ? "active" : ""}" onclick="go('menu')">${icon("menu")}メニュー</button></nav>`;
+  return `<nav class="nav"><button class="${onList ? "active" : ""}" onclick="go('home')">${icon("card")}名刺</button><button class="shutter" onclick="shutter()" oncontextmenu="event.preventDefault();bulkSheet()" aria-label="名刺を撮影">${icon("camera")}<span>撮影</span></button><button class="${onMenu ? "active" : ""}" onclick="go('menu')">${icon("menu")}メニュー</button></nav>`;
 }
 function render() {
   const page =
@@ -221,7 +221,7 @@ function listContent() {
       : `<div class="empty"><div class="emptyart"><div class="miniCard back"></div><div class="miniCard"><i></i><i></i><i></i></div><div class="spark">${icon("camera")}</div></div><h2>はじめての1枚を、ここへ。</h2><p>下の「撮影」を押して名刺を映すだけ。<br>表・裏を撮って完了すると、自動で読み取ります。</p></div>`;
   if (layout === "table")
     return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" onclick="openPerson('${p.id}')"><td>${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
-  return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
+  return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
 }
 function home() {
   const count = (s) => state.people.filter((p) => p.status === s).length;
@@ -240,10 +240,18 @@ function home() {
         `<button class="chip ${filter === v ? "active" : ""} ${v === "review" ? "attn" : ""}" onclick="filter='${v}';render()">${l} ${n}</button>`,
     )
     .join("");
+  const queued = state.people.filter((p) => p.queue).length;
+  const busyNow = state.processing || queued
+    ? `<div class="procbar"><i class="spin"></i><span>${esc(state.processing || "処理待ち")}${queued ? `<small>残り ${queued}件 ・ 撮影はそのまま続けられます</small>` : ""}</span></div>`
+    : "";
+  const dupCount = dupes().length;
+  const dupBanner = dupCount
+    ? `<button class="setup" onclick="dupSheet()">${icon("link")}<span><b>重複の可能性 ${dupCount}件</b><small>統合・削除するか、別人として扱えます</small></span>${icon("next")}</button>`
+    : "";
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">MEISHI CLAUDE</div><h1>名刺ノート</h1></div></div></header>${recordBanner()}${setup}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div><button class="iconbtn toggle ${layout === "table" ? "active" : ""}" onclick="layout=layout==='table'?'cards':'table';render()" aria-label="カード表示と表表示を切り替え">${icon(layout === "table" ? "card" : "table")}</button></div>${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">MEISHI CLAUDE</div><h1>名刺ノート</h1></div></div></header>${recordBanner()}${busyNow}${setup}${dupBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div><button class="iconbtn toggle ${layout === "table" ? "active" : ""}" onclick="layout=layout==='table'?'cards':'table';render()" aria-label="カード表示と表表示を切り替え">${icon(layout === "table" ? "card" : "table")}</button></div>${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
     ["newest", "追加日が新しい順"],
     ["updated", "更新日が新しい順"],
     ["name", "氏名順"],
@@ -298,6 +306,8 @@ function openLink(i) {
   call("openUrl", { url: links[i] });
 }
 function primaryAction(p) {
+  if (p.queue)
+    return `<button class="outline full" disabled><i class="spin"></i>${p.queue === "contact" ? "連絡先に登録中…" : "読み取り中…"}</button>`;
   if (p.suggestion)
     return `<button class="primary full" onclick="beginEdit()">${icon("check")}読み取り結果を確認して保存</button>`;
   if (!p.pages.length && p.status !== "confirmed")
@@ -323,7 +333,7 @@ function detail() {
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3>連絡先情報</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section></div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button></div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。<div class="row gap"><button class="outline" onclick="unlinkContact('${p.id}')">追加した方を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'})">問題なし</button></div></div>` : ""}<div class="detailcols"><div><section class="panel"><h3>連絡先情報</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section></div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button></div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
@@ -345,7 +355,7 @@ function detailMenu() {
     `<h2>${esc(title(p))}</h2><div class="mlist">${[
       menuRow("camera", "スキャンで画像を追加", "裏面や追加ページを撮影", "closeModal();scanAdd()"),
       menuRow("image", "画像・PDFを追加", "", "closeModal();call('pick',{id:selected,mode:'all'})"),
-      p.pages.length ? menuRow("spark", "Geminiで読み取り直す", "結果は保存前に確認できます", "closeModal();recognize()") : "",
+      p.pages.length ? menuRow("spark", "Geminiで読み取り直す", "結果は保存前に確認できます", "closeModal();reread()") : "",
       p.status === "confirmed" && !p.contactRawId ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
       menuRow("user", "人物写真・会社ロゴ", p.portrait || p.logo ? "登録済み" : "画像検索して登録", "assetSheet()"),
       state.people.length > 1 ? menuRow("link", "別の名刺と統合", "同じ人の名刺をまとめる", "mergeSheet()") : "",
@@ -387,6 +397,17 @@ function recognize() {
   }
   call("recognize", { id: selected });
 }
+function reread() {
+  if (!state.keySet) {
+    report("メニュー → Gemini APIキー・モデル で、APIキーを登録してください。");
+    return;
+  }
+  call("reread", { id: selected });
+}
+function unlinkContact(id) {
+  if (confirm("このアプリが追加した連絡先を削除します。もともとあった連絡先はそのまま残ります。続けますか？"))
+    call("unlinkContact", { id });
+}
 
 // ---- Review / edit ------------------------------------------------------------
 // Edit doubles as the review screen: a pending Gemini result is pre-filled into the form.
@@ -412,7 +433,7 @@ function editPage() {
   const p = getPerson();
   const warn = draft.fromSuggestion && p.suggestion?.warnings;
   const registered = !!p.contactRawId;
-  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><div class="grid2">${fields.map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace"].includes(k) ? "span2" : ""}"><span class="label">${l}</span>${["email", "phone", "mobile", "fax", "address"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存</button><p class="caption">Google連絡先には反映されません。連絡先アプリで編集してください。</p>` : `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}`}</div>`;
+  return `${backbar(draft.fromSuggestion ? "読み取り結果の確認" : "連絡先を編集")}${draft.pages.length ? `<div class="pages compact">${draft.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i},true)"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${i + 1}ページ"></button>`).join("")}</div>` : ""}${draft.fromSuggestion ? `<div class="tip gap">${icon("spark")} Geminiの読み取り結果です。画像と見比べて、氏名・電話・メールを確認してください。<button class="link" onclick="discardSuggestion()">結果を破棄</button></div>` : ""}${warn ? `<div class="tip warning gap">注意：${esc(warn)}</div>` : ""}<div class="panel gap"><div class="grid2">${fields.map(([k, l]) => `<label class="${["company", "department", "title", "email", "address", "website", "tags", "metPlace"].includes(k) ? "span2" : ""}"><span class="label">${l}</span>${["email", "phone", "mobile", "fax", "address"].includes(k) ? `<textarea style="min-height:${k === "address" ? 90 : 55}px" rows="${k === "address" ? 2 : 1}" oninput="draft['${k}']=this.value">${esc(draft[k])}</textarea>` : `<input type="${k === "metDate" ? "date" : "text"}" value="${esc(draft[k])}" oninput="draft['${k}']=this.value" ${k === "tags" ? 'placeholder="例：医療、取引先、学会"' : ""}>`}</label>`).join("")}</div><p class="caption">複数の電話・メールは改行で区切れます。</p></div><div class="fixedsave">${registered ? `<button class="primary full" onclick="savePerson(false)">${icon("check")}保存（Google連絡先にも反映）</button><p class="caption">このアプリで登録した連絡先を、ここでの内容で上書きします。</p>` : `<button class="primary full" onclick="savePerson(true)">${icon("user")}保存して連絡先に登録</button><button class="outline full" onclick="savePerson(false)">保存のみ</button>${state.contactAccount ? `<p class="caption center">登録先：${esc(state.contactAccount)}</p>` : ""}`}</div>`;
 }
 function savePerson(thenContact) {
   if (!String(draft.name || "").trim()) {
@@ -479,12 +500,74 @@ function removeItem(key, index) {
     call("removeItem", { id: selected, key, index });
 }
 function deletePerson() {
-  if (
-    confirm(
-      "この名刺とメモ・録音の登録を削除しますか？Google連絡先は削除されません。復旧にはバックアップが必要です。",
-    )
-  )
-    call("delete", { id: selected });
+  const p = getPerson();
+  if (!p.contactRawId) {
+    if (confirm("この名刺とメモ・録音を削除しますか？復旧にはバックアップが必要です。"))
+      call("delete", { id: selected });
+    return;
+  }
+  modal(
+    `<h2>${esc(title(p))} を削除</h2><p class="caption">名刺・メモ・録音を削除します。復旧にはバックアップが必要です。</p><div class="mlist">${menuRow("trash", "名刺と連絡先を削除", "このアプリで登録したGoogle連絡先も消します", "closeModal();call('delete',{id:selected,withContact:true})", "dangerrow")}${menuRow("trash", "名刺だけ削除", "Google連絡先は残します", "closeModal();call('delete',{id:selected})", "dangerrow")}</div>`,
+  );
+}
+
+// ---- Duplicates -----------------------------------------------------------------
+// Flags pairs sharing an email, a mobile number or the same name (+company). Office
+// main lines are ignored on purpose: colleagues share them.
+function dupes() {
+  const n = (x) => String(x || "").normalize("NFKC").toLowerCase().replace(/[\s　]/g, "");
+  const index = {};
+  const add = (k, id) => (index[k] = index[k] || []).push(id);
+  for (const p of state.people) {
+    for (const e of String(p.email || "").split(/[\n,;]/)) if (n(e).includes("@")) add("m:" + n(e), p.id);
+    for (const t of String(p.mobile || "").split(/[\n,;]/)) {
+      const d = t.replace(/\D/g, "");
+      if (d.length >= 10) add("t:" + d.slice(-10), p.id);
+    }
+    if (n(p.name).length >= 2) add((n(p.company) ? "c:" + n(p.company) + "|" : "n:") + n(p.name), p.id);
+  }
+  const reason = { m: "同じメールアドレス", t: "同じ携帯番号", c: "同じ氏名・会社", n: "同じ氏名" };
+  const pairs = new Map();
+  for (const [k, ids] of Object.entries(index)) {
+    const u = [...new Set(ids)];
+    for (let i = 0; i < u.length; i++)
+      for (let j = i + 1; j < u.length; j++) {
+        const key = [u[i], u[j]].sort().join("|");
+        if (!pairs.has(key)) pairs.set(key, { a: u[i], b: u[j], why: new Set() });
+        pairs.get(key).why.add(reason[k[0]]);
+      }
+  }
+  const byId = Object.fromEntries(state.people.map((p) => [p.id, p]));
+  const out = [...pairs.values()].filter(
+    (x) => !(byId[x.a].notDuplicate || []).includes(x.b) && !byId[x.a].queue && !byId[x.b].queue,
+  );
+  for (const p of state.people) if (p.contactDuplicate) out.push({ contact: p.id });
+  return out;
+}
+function dupSheet() {
+  const byId = Object.fromEntries(state.people.map((p) => [p.id, p]));
+  const who = (p) =>
+    `<button class="duprow" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img src="${img(p.pages[0].file)}" alt="">` : `<span class="initial">${esc(title(p).slice(0, 1))}</span>`}<span><b>${esc(title(p))}</b><small>${esc(company(p))}${p.contactRawId ? " ・ 連絡先登録済み" : ""}<br>追加 ${esc(date(p.created))}</small></span></button>`;
+  const items = dupes()
+    .map((d) => {
+      if (d.contact) {
+        const p = byId[d.contact];
+        return `<div class="dupitem">${who(p)}<p class="caption">Google連絡先に既存の「${esc(p.contactDuplicate)}」があります（同じ電話・メール）。</p><div class="row"><button class="outline" onclick="closeModal();unlinkContact('${p.id}')">追加した連絡先を削除</button><button class="noflex" onclick="call('dismissContactDup',{id:'${p.id}'});closeModal()">問題なし</button></div></div>`;
+      }
+      // Keep the newer card as the base: it carries the current title and contact details.
+      const [older, newer] = [byId[d.a], byId[d.b]].sort((x, y) => x.created - y.created);
+      return `<div class="dupitem">${who(newer)}${who(older)}<p class="caption">${[...d.why].join("・")}</p><div class="row"><button class="primary" onclick="mergePair('${newer.id}','${older.id}')">1人にまとめる</button><button class="noflex" onclick="call('notDuplicate',{id:'${d.a}',other:'${d.b}'});closeModal()">別人</button></div></div>`;
+    })
+    .join("");
+  modal(
+    `<h2>${icon("link")} 重複の可能性</h2><p class="caption">「1人にまとめる」は新しい名刺の内容を優先し、古い名刺の画像・メモ・録音を引き継ぎます。Google連絡先も1件にまとめます。</p>${items || '<p class="caption">重複の可能性はありません。</p>'}`,
+  );
+}
+function mergePair(target, source) {
+  if (!confirm("2枚の名刺を1人にまとめますか？")) return;
+  closeModal();
+  selected = target;
+  call("merge", { id: target, sourceId: source });
 }
 // Page tools (rotate / reorder / remove / share) live in the viewer, not under every image.
 function viewImage(i, readOnly = false) {
@@ -589,6 +672,19 @@ function driveSettingsSheet() {
     `<h2>${icon("cloud")} Driveフォルダの設定</h2><label class="label">取り込むフォルダ</label><p><b>${esc(state.driveFolderName)}</b></p><p class="caption">取り込みが済んだファイルは、このフォルダの中の「登録済み」へ移動します（無ければ作ります）。</p><label class="label">ファイルのまとめ方</label><select onchange="call('driveSelect',{folderId:state.driveFolderId,folderName:state.driveFolderName,mode:this.value})">${groupings.map(([v, l]) => `<option value="${v}" ${(state.driveMode || "file") === v ? "selected" : ""}>${l}</option>`).join("")}</select><div class="row gap"><button class="outline" onclick="closeModal();driveBrowse()">フォルダを変更</button><button class="danger noflex" onclick="if(confirm('Driveフォルダの設定を解除しますか？')){closeModal();call('driveClear')}">解除</button></div>`,
   );
 }
+function bulkSheet() {
+  modal(
+    `<h2>${icon("camera")} まとめて撮影</h2><p class="caption">スキャン画面で何枚も続けて撮影し、最後に完了を押します。保存後はバックグラウンドで読み取り・登録するので、すぐ次を撮影できます。</p><div class="mlist">${[
+      menuRow("card", "表・裏の順に撮る", "1人目の表→裏→2人目の表→裏…", "closeModal();call('bulkScan',{mode:'pair'})"),
+      menuRow("list", "片面だけ撮る", "1枚 = 1人", "closeModal();call('bulkScan',{mode:'page'})"),
+    ].join("")}</div><p class="caption">1回20ページまで。1人ずつなら撮影ボタンを押すだけです。</p>`,
+  );
+}
+function importZipSheet() {
+  modal(
+    `<h2>${icon("download")} Eightなどからインポート</h2><p class="caption">CSV（名刺の項目）と名刺画像を1つのZIPにまとめたファイルを読み込みます。作り方はリポジトリの docs/IMPORT_FORMAT.md を参照してください。</p><label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>Google連絡先にも登録する</b><small>Eight経由で既に登録済みならオフのまま</small></span><input type="checkbox" class="switch" id="zipcontacts"></label><p class="caption">同じZIPを2回読み込んでも、同じ人は追加されません。氏名が空で画像がある行はGeminiで読み取ります。</p><button class="primary full gap" onclick="const toContacts=$('zipcontacts').checked;closeModal();call('importZip',{toContacts})">${icon("download")}ZIPファイルを選ぶ</button>`,
+  );
+}
 function menuPage() {
   const unread = state.people.filter(
     (p) => p.status === "new" && p.pages.length,
@@ -604,11 +700,13 @@ function menuPage() {
             menuRow("folder", "Driveフォルダの設定", groupings.find((g) => g[0] === (state.driveMode || "file"))[1], "driveSettingsSheet()"),
           ]
         : [menuRow("cloud", "Google DriveのScanSnapフォルダを設定", "PDFを取り込み、済んだら「登録済み」へ移動", "driveBrowse()")]),
+      menuRow("camera", "まとめて撮影", "何枚も続けて撮影（撮影ボタンの長押しでも開けます）", "bulkSheet()"),
       menuRow("image", "画像・PDFから取り込む", "写真やスキャンをまとめて", "importSheet('pick')"),
       menuRow("folder", "ScanSnapフォルダから取り込む", "フォルダ内を一括で", "importSheet('folder')"),
       state.folder ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
       menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})"),
       menuRow("edit", "手入力で追加", "画像なしで登録", "manualAdd()"),
+      menuRow("download", "Eightなどからインポート", "CSV＋画像のZIPファイル", "importZipSheet()"),
     ],
   )}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
@@ -617,9 +715,10 @@ function menuPage() {
     menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()"),
   ])}${section("設定", [
     menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
-    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後すぐGeminiへ送信</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
+    `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>撮影・Drive・ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
+    `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`,
     menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Meishi-Claude 0.4.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
+  ])}<p class="footnote">Meishi-Claude 0.5.0 ・ Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)
@@ -724,6 +823,16 @@ window.onNative = ({ type, data }) => {
   }
   else if (type === "review") pendingEdit = data;
   else if (type === "driveFolders") driveSheet(data);
+  else if (type === "queued") {
+    route = route === "edit" ? route : "home";
+    toast(
+      data.ids.length +
+        "人を保存しました。読み取り・登録はバックグラウンドで進めます" +
+        (data.skipped ? `（重複スキップ ${data.skipped}）` : ""),
+    );
+    if (data.errors.length)
+      report("取り込めなかったファイル：\n" + data.errors.join("\n"));
+  }
   else if (type === "batchDone") {
     filter = "review";
     if (route !== "edit") route = "home";
