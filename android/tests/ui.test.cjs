@@ -34,9 +34,12 @@ const p = (id, name, company, status = "confirmed") => ({
 (async () => {
   const browser = await chromium.launch({
     headless: true,
+    // CHROME, else the sandbox's preinstalled browser, else Playwright's own (as on CI).
     executablePath:
       process.env.CHROME ||
-      "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
+      [
+        "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
+      ].find((f) => fs.existsSync(f)),
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({
