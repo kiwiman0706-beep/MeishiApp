@@ -547,6 +547,16 @@ public class MainActivity extends Activity {
     withDriveToken(token -> task(title, () -> work.run(new Drive(token))));
   }
 
+  // Account picked, then nothing: almost always the Google Cloud side (DRIVE_SETUP.md).
+  static String driveNotGranted(String code) {
+    return "Google Driveの許可が完了しませんでした" + code + "。\n\n"
+        + "自分で閉じた場合は、もう一度お試しください。アカウントを選んだだけで戻ってしまう場合は、Google Cloudの設定を確認してください（docs/DRIVE_SETUP.md）：\n"
+        + "1. 「クライアント」に Android のOAuthクライアントがあり、パッケージ名が jp.yaegaki.meishiclaude、SHA-1が A1:13:EA:34:83:60:56:32:E7:F5:94:4E:4E:8C:20:55:DD:AE:28:BA\n"
+        + "2. 「対象」→「テストユーザー」に、選んだGoogleアカウントが入っている\n"
+        + "3. 「ライブラリ」で Google Drive API が有効\n"
+        + "4. 作ったばかりなら、反映まで数分〜数十分待つ";
+  }
+
   static String driveSetupHelp(Exception e) {
     return "Google Driveに接続できませんでした。\n\n"
         + "初回はGoogle Cloudで、このアプリ用のOAuthクライアント（Android）登録が必要です。"
@@ -1729,7 +1739,18 @@ public class MainActivity extends Activity {
     if (request == DRIVE_AUTH) {
       TokenWork work = pendingToken;
       pendingToken = null;
-      if (result != RESULT_OK) return;
+      if (result != RESULT_OK) {
+        // Google answers a missing / mismatched OAuth setup with a plain "cancel": say so.
+        String code = "";
+        try {
+          if (data != null) Identity.getAuthorizationClient(this).getAuthorizationResultFromIntent(data);
+        } catch (com.google.android.gms.common.api.ApiException e) {
+          code = "（Googleのコード " + e.getStatusCode() + "）";
+        } catch (Exception ignored) {
+        }
+        event("error", driveNotGranted(code));
+        return;
+      }
       if (work == null) {
         event("toast", "許可しました。もう一度操作してください");
         return;
