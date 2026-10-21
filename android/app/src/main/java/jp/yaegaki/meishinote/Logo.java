@@ -55,7 +55,7 @@ public final class Logo {
 
   // Gives the logo to the source and to everyone at the same company without one (or with the
   // previous cut-out "old", when cutting again).
-  public static int share(Store s, String sourceId, String logo, String old) throws Exception {
+  public static int share(Store s, String sourceId, String logo, String old, String origin) throws Exception {
     JSONObject source = s.person(sourceId);
     String key = Company.key(source);
     int n = 0;
@@ -64,14 +64,43 @@ public final class Logo {
       JSONObject x = a.getJSONObject(i);
       boolean same = x.getString("id").equals(sourceId) || (!key.isEmpty() && key.equals(Company.key(x)));
       String cur = x.optString("logo");
-      boolean free = cur.isEmpty() || (!old.isEmpty() && cur.equals(old));
+      // A logo cut from a card also replaces one found on the web.
+      boolean free =
+          cur.isEmpty()
+              || (!old.isEmpty() && cur.equals(old))
+              || (origin.equals("card") && x.optString("logoSource").startsWith("web:"));
       if (!same || !free || x.optString("kind").equals(Nenga.INBOX)) continue;
       JSONObject p = s.person(x.getString("id"));
-      p.put("logo", logo);
+      p.put("logo", logo).put("logoSource", origin);
       s.put(p);
       n++;
     }
     return n;
+  }
+
+  // The card's logo (cut where Gemini says), else the company's website; given to everyone at the
+  // company without one. Search (Gemini + Google Search) only when the card has no address.
+  public static boolean auto(Store s, String id, String box, String old, WebLogo.Search search) throws Exception {
+    JSONObject p = s.person(id);
+    if (box != null && !box.isEmpty()) {
+      String cut = crop(s, p, box);
+      if (!cut.isEmpty()) {
+        share(s, id, cut, old, "card");
+        return true;
+      }
+    }
+    String key = Company.key(p);
+    if (key.isEmpty()) return false;
+    JSONArray a = s.snapshot().getJSONArray("people");
+    for (int i = 0; i < a.length(); i++) {
+      JSONObject x = a.getJSONObject(i);
+      String l = x.optString("logo");
+      if (!l.isEmpty() && !l.equals(old) && !x.getString("id").equals(id) && key.equals(Company.key(x))) return false;
+    }
+    WebLogo.Found f = WebLogo.find(p, search);
+    if (f == null) return false;
+    share(s, id, WebLogo.save(s, f), old, "web:" + f.domain);
+    return true;
   }
 
   // One card per company that has no logo yet (the newest with an image, not tried before).
@@ -85,9 +114,11 @@ public final class Logo {
       String key = Company.key(p);
       if (key.isEmpty()) continue;
       if (!p.optString("logo").isEmpty()) has.add(key);
-      if (p.getJSONArray("pages").length() == 0 || p.optBoolean("logoTried") || !p.optString("queue").isEmpty()) continue;
+      if (p.optBoolean("logoTried") || !p.optString("queue").isEmpty()) continue;
+      // Prefer a card with an image (its logo can be cut), then the newest.
       JSONObject cur = best.get(key);
-      if (cur == null || p.optLong("created") > cur.optLong("created")) best.put(key, p);
+      int pages = p.getJSONArray("pages").length() > 0 ? 1 : 0, curPages = cur == null ? -1 : cur.getJSONArray("pages").length() > 0 ? 1 : 0;
+      if (cur == null || pages > curPages || (pages == curPages && p.optLong("created") > cur.optLong("created"))) best.put(key, p);
     }
     List<String> ids = new ArrayList<>();
     for (Map.Entry<String, JSONObject> e : best.entrySet()) if (!has.contains(e.getKey())) ids.add(e.getValue().getString("id"));

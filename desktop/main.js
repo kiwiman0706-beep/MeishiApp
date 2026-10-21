@@ -115,6 +115,18 @@ function imaging(base) {
       if (s < 1) img = img.resize({ width: Math.round(width * s), height: Math.round(height * s), quality: "best" });
       return img.toJPEG(85);
     },
+    size: async (buf) => {
+      const img = nativeImage.createFromBuffer(Buffer.from(buf));
+      return img.isEmpty() ? null : img.getSize();
+    },
+    // Logos from websites keep their transparency.
+    toPng: async (buf, max) => {
+      let img = nativeImage.createFromBuffer(Buffer.from(buf));
+      const { width, height } = img.getSize();
+      const s = Math.min(1, max / Math.max(width, height));
+      if (s < 1) img = img.resize({ width: Math.round(width * s), height: Math.round(height * s), quality: "best" });
+      return img.toPNG();
+    },
     // rectOf(width, height) → { x, y, width, height } or null; the cut-out is downscaled to max.
     crop: async (buf, rectOf, max) => {
       const img = nativeImage.createFromBuffer(buf);

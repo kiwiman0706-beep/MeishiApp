@@ -96,7 +96,7 @@ public final class Gemini {
 
   static final String[] CARD_KEYS = {
     "kind", "name", "kana", "company", "department", "title", "email", "phone", "mobile", "fax",
-    "postal", "address", "website", "genre", "hours", "holidays", "rawText", "warnings"
+    "postal", "address", "website", "genre", "hours", "holidays", "rawText", "warnings", "logoBox"
   };
 
   static final String CARD_PROMPT =
@@ -108,6 +108,7 @@ public final class Gemini {
           + "日本語表記優先。画像にない情報は空文字。"
           + "kanaは氏名（shopなら店名）の読みをひらがなで、姓と名の間に半角スペース。振り仮名の印字があればそれを、無くてもローマ字表記（例: Taro Yamada）があればそれを元にひらがなにする。どちらも無ければ推測せず空。"
           + "複数の電話・メールは改行区切り。"
+          + "logoBoxは1枚目の画像にある会社・団体・お店のロゴ（シンボルマーク、またはデザインされたロゴタイプ）の位置を \"ymin,xmin,ymax,xmax\"（画像の高さ・幅を0〜1000とした整数）。シンボルと社名ロゴが並ぶときは両方を囲む。ロゴが無い、普通の文字で社名が書いてあるだけ、人物写真・QRコードしか無いときは空。"
           + "全キーを持つJSONオブジェクトだけを返してください。全値は文字列。rawTextは全ページの転記。warningsは読み取り不確実箇所・混在など。";
 
   static final String[] NENGA_KEYS = {
@@ -146,6 +147,31 @@ public final class Gemini {
     if (text.length() > 6000) text = text.substring(0, 6000);
     JSONArray parts = new JSONArray().put(new JSONObject().put("text", KANA_PROMPT)).put(new JSONObject().put("text", text));
     return ask(parts, KANA_KEYS);
+  }
+
+  // The organisation's official site via Gemini with Google Search (only when the card has neither
+  // a web address nor a company e-mail). Returns a URL or "".
+  public String officialSite(JSONObject p) throws Exception {
+    String org = p.optString("company");
+    if (org.trim().isEmpty() && p.optString("kind").equals("shop")) org = p.optString("name");
+    if (org.trim().isEmpty()) return "";
+    String who = org + (p.optString("address").isEmpty() ? "" : " / " + p.optString("address"));
+    String prompt =
+        "次の会社・団体・お店の公式ウェブサイトのトップページのURLを、Google検索で確認して1つだけ答えてください。"
+            + "公式サイトが見つからない、または確信が持てないときは NONE とだけ答えてください。URL以外は書かないでください。\n"
+            + who;
+    JSONObject r =
+        request(
+            "models/" + model + ":generateContent",
+            new JSONObject()
+                .put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", prompt)))))
+                .put("tools", new JSONArray().put(new JSONObject().put("google_search", new JSONObject()))));
+    StringBuilder t = new StringBuilder();
+    JSONArray cand = r.optJSONArray("candidates");
+    JSONArray parts = cand == null || cand.length() == 0 ? null : cand.getJSONObject(0).optJSONObject("content") == null ? null : cand.getJSONObject(0).getJSONObject("content").optJSONArray("parts");
+    for (int i = 0; parts != null && i < parts.length(); i++) t.append(parts.getJSONObject(i).optString("text")).append(' ');
+    java.util.regex.Matcher m = java.util.regex.Pattern.compile("https?://[^\\s\"'<>)\\]]+").matcher(t);
+    return m.find() && !m.group().matches(".*(vertexaisearch|google\\.).*") ? m.group() : "";
   }
 
   // Only the front page: that is where the logo is, and it keeps the request small.

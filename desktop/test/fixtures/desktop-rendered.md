@@ -1,5 +1,5 @@
 ---
-rev: 4c6e4fbb42fc
+rev: d4476c783700
 theta: meishi/person@1
 id: 2b6f3c1e-aaaa-bbbb-cccc-000000000001
 name: 山田 太郎
@@ -32,6 +32,8 @@ originals:
 - file: Meishi/_files/a1.pdf
   name: scan.pdf
   sha256: abc
+logo: Meishi/_files/lg1.jpg
+logo_source: web:example.com
 audio:
 - file: Meishi/_files/r1.m4a
   time: 2024-03-06T13:40:00.000+09:00

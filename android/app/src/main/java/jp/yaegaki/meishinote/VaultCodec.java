@@ -24,7 +24,7 @@ public final class VaultCodec {
     "theta", "rev", "id", "name", "kana", "company", "department", "title", "email", "phone", "mobile", "fax",
     "postal", "address", "website", "genre", "hours", "holidays", "tags", "met", "met_place", "status",
     "contact_registered", "calendar_registered", "no_auto_contact", "import_key", "not_duplicate", "geo",
-    "warnings", "created", "updated", "pages", "originals", "portrait", "logo", "audio", "greetings"
+    "warnings", "created", "updated", "pages", "originals", "portrait", "logo", "logo_source", "audio", "greetings"
   };
   static final Set<String> OWN = new HashSet<>(Arrays.asList(ORDER));
   static final String[] LISTS = {"email", "phone", "mobile", "fax"};
@@ -139,6 +139,8 @@ public final class VaultCodec {
     }
     if (!originals.isEmpty()) fm.put("originals", originals);
     for (String k : new String[] {"portrait", "logo"}) if (!p.optString(k).isEmpty()) fm.put(k, path(p.getString(k)));
+    // Where the logo came from: "card" (cut from the card), "web:<domain>"; absent = picked by hand.
+    if (!p.optString("logo").isEmpty() && !p.optString("logoSource").isEmpty()) fm.put("logo_source", p.getString("logoSource"));
     JSONArray au = p.optJSONArray("audio");
     List<Object> audio = new ArrayList<>();
     for (int i = 0; au != null && i < au.length(); i++) {
@@ -430,6 +432,7 @@ public final class VaultCodec {
       String l = local(fm.get(k));
       if (l != null) p.put(k, l);
     }
+    if (p.has("logo") && fm.get("logo_source") instanceof String) p.put("logoSource", fm.get("logo_source"));
     JSONArray audio = new JSONArray();
     if (fm.get("audio") instanceof List)
       for (Object o : (List<?>) fm.get("audio")) {

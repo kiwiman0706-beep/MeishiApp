@@ -16,7 +16,7 @@ const ORDER = [
   "theta", "rev", "id", "name", "kana", "company", "department", "title", "email", "phone", "mobile", "fax",
   "postal", "address", "website", "genre", "hours", "holidays", "tags", "met", "met_place", "status",
   "contact_registered", "calendar_registered", "no_auto_contact", "import_key", "not_duplicate", "geo",
-  "warnings", "created", "updated", "pages", "originals", "portrait", "logo", "audio", "greetings",
+  "warnings", "created", "updated", "pages", "originals", "portrait", "logo", "logo_source", "audio", "greetings",
 ];
 const OWN = new Set(ORDER);
 const LISTS = ["email", "phone", "mobile", "fax"];
@@ -133,6 +133,7 @@ function render(p) {
   });
   if (originals.length) fm.originals = originals;
   for (const k of ["portrait", "logo"]) if (p[k]) fm[k] = pathOf(p[k]);
+  if (p.logo && p.logoSource) fm.logo_source = p.logoSource;
   const audio = (p.audio || [])
     .filter((a) => a.state !== "recording")
     .map((a) => ({ file: pathOf(a.file), time: iso(a.time || 0), seconds: a.seconds | 0 }));
@@ -262,6 +263,7 @@ function parse(md, allowNewId = false) {
     const l = local(fm[k]);
     if (l) p[k] = l;
   }
+  if (p.logo && typeof fm.logo_source === "string") p.logoSource = fm.logo_source;
   p.audio = (Array.isArray(fm.audio) ? fm.audio : [])
     .filter((m) => m && typeof m === "object")
     .map((m) => {

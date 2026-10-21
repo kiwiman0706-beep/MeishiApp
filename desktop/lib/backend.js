@@ -9,6 +9,7 @@ const model = require("./model");
 const importer = require("./importer");
 const gemini = require("./gemini");
 const V = require("./vault-codec");
+const weblogo = require("./weblogo");
 
 // Features the desktop offers; the UI hides the rest (see THETA_HATCH_SPEC §4.1).
 const CAPS = ["pick", "folder", "gemini", "vault", "map", "export", "nenga", "attach"];
@@ -273,14 +274,17 @@ class Backend {
         const files = await this.svc.openFiles(true);
         if (!files || !files.length) return;
         const name = crypto.randomUUID() + ".jpg";
-        fs.writeFileSync(st.mediaFile(name), await this.svc.imaging.toJpeg(fs.readFileSync(files[0]), 1400));
+        const src = typeof files[0] === "string" ? fs.readFileSync(files[0]) : await files[0].read();
+        await st.writeMedia(name, await this.svc.imaging.toJpeg(src, 1400));
         const p = st.person(id);
         p[q.kind] = name;
+        if (q.kind === "logo") delete p.logoSource; // picked by hand: automatic logos never replace it
         return st.put(p);
       }
       case "clearAsset": {
         const p = st.person(id);
         if (q.kind === "logo" || q.kind === "portrait") delete p[q.kind];
+        if (q.kind === "logo") delete p.logoSource;
         return st.put(p);
       }
       case "search": {
@@ -375,7 +379,7 @@ class Backend {
 
   async read(p, kind) {
     const images = [];
-    for (const pg of p.pages) images.push(await this.svc.imaging.toJpeg(fs.readFileSync(this.store.mediaFile(pg.file)), 1600));
+    for (const pg of p.pages) images.push(await this.svc.imaging.toJpeg(await this.store.readMedia(pg.file), 1600));
     const s = this.settings;
     return gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, kind, images, this.fetch);
   }
@@ -404,6 +408,8 @@ class Backend {
             const p = model.applyResult(this.store.person(next.id), r);
             delete p.queue;
             this.store.put(p);
+            // The logo comes with the same answer; without one, the company's website (no search).
+            if (!p.logo) await this.autoLogo(p, r.logoBox, "", false).catch(() => {});
           }
           done++;
         } catch (e) {
@@ -434,29 +440,60 @@ class Backend {
     }
   }
 
-  // Logo.java: Gemini says where the logo is on the front page; the cut-out goes to everyone at
-  // the company without a logo (and replaces the previous cut-out when asked again).
+  // Logo.java / WebLogo.java: the logo cut from the card's front page (Gemini says where), else the
+  // company's website. It goes to everyone at the company without a logo, also replacing a web logo
+  // when cut from a card, and the previous cut-out when asked again ("relogo"). Hand-picked stay.
   async cutLogo(next) {
     const st = this.store;
-    const src = fs.readFileSync(st.mediaFile(next.pages[0].file));
-    const front = await this.svc.imaging.toJpeg(src, 1600);
-    const s = this.settings;
-    const r = await gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, "logo", [front], this.fetch);
     const p = st.person(next.id);
     const old = next.queue === "relogo" ? p.logo || "" : "";
     delete p.queue;
     p.logoTried = true;
     st.put(p, false);
-    const jpeg = await this.svc.imaging.crop(front, (w, h) => model.logoRect(r.box, w, h), 512);
-    if (!jpeg) return false;
-    const name = crypto.randomUUID() + ".jpg";
-    fs.writeFileSync(st.mediaFile(name), jpeg);
+    if (!(next.pages || []).length) return this.autoLogo(st.person(next.id), "", old, true);
+    const front = await this.svc.imaging.toJpeg(await st.readMedia(next.pages[0].file), 1600);
+    const r = await gemini.generate(this.cfg(), "logo", [front], this.fetch);
+    return this.autoLogo(st.person(next.id), r.box, old, true, front);
+  }
+
+  cfg() {
+    const s = this.settings;
+    return { key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") };
+  }
+
+  async autoLogo(p, box, old, search, front) {
+    const st = this.store, im = this.svc.imaging;
+    if (box && (p.pages || []).length) {
+      front = front || (await im.toJpeg(await st.readMedia(p.pages[0].file), 1600));
+      const jpeg = await im.crop(front, (w, h) => model.logoRect(box, w, h), 512);
+      if (jpeg) return this.shareLogo(p, jpeg, ".jpg", old, "card");
+    }
+    const key = model.companyKey(p);
+    if (!key || st.people().some((x) => x.logo && x.logo !== old && model.companyKey(x) === key && x.id !== p.id)) return false;
+    const found = await weblogo.find(
+      {
+        fetchImpl: this.fetch,
+        size: (b) => im.size(b),
+        searchSite: search && this.secrets.get() ? (x) => gemini.officialSite(this.cfg(), x, this.fetch) : null,
+      },
+      p,
+    );
+    if (!found) return false;
+    return this.shareLogo(p, await im.toPng(found.bytes, 512), ".png", old, "web:" + found.domain);
+  }
+
+  async shareLogo(p, bytes, ext, old, origin) {
+    const st = this.store;
+    const name = crypto.randomUUID() + ext;
+    await st.writeMedia(name, bytes);
     const key = model.companyKey(p);
     for (const x of st.people()) {
       const same = x.id === p.id || (key && model.companyKey(x) === key);
-      if (!same || x.kind === model.INBOX || (x.logo && x.logo !== old) || (x.logo && !old)) continue;
+      const free = !x.logo || (old && x.logo === old) || (origin === "card" && String(x.logoSource || "").startsWith("web:"));
+      if (!same || !free || x.kind === model.INBOX) continue;
       const y = st.person(x.id);
       y.logo = name;
+      y.logoSource = origin;
       st.put(y);
     }
     return true;

@@ -67,4 +67,19 @@ async function generate({ key, model, format }, kind, images, fetchImpl) {
   return out;
 }
 
-module.exports = { models, generate };
+// The organisation's official site via Gemini with Google Search (only when the card has neither a
+// web address nor a company e-mail). Returns a URL or "".
+async function officialSite({ key, model }, p, fetchImpl) {
+  if (!/^[A-Za-z0-9._-]+$/.test(model)) throw new Error("モデル名が不正です");
+  const who = [p.company || (p.kind === "shop" ? p.name : ""), p.address].filter(Boolean).join(" / ");
+  if (!String(p.company || p.name || "").trim()) return "";
+  const prompt =
+    "次の会社・団体・お店の公式ウェブサイトのトップページのURLを、Google検索で確認して1つだけ答えてください。" +
+    "公式サイトが見つからない、または確信が持てないときは NONE とだけ答えてください。URL以外は書かないでください。\n" + who;
+  const r = await request(key, `models/${model}:generateContent`, { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }, fetchImpl);
+  const t = ((r.candidates || [])[0]?.content?.parts || []).map((x) => x.text || "").join(" ");
+  const m = /https?:\/\/[^\s"'<>)\]]+/.exec(t);
+  return m && !/vertexaisearch|google\./.test(m[0]) ? m[0] : "";
+}
+
+module.exports = { models, generate, officialSite };

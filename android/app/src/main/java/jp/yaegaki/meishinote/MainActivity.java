@@ -1449,6 +1449,7 @@ public class MainActivity extends Activity {
           String key = q.optString("kind");
           if (key.equals("logo") || key.equals("portrait")) {
             p.remove(key);
+            if (key.equals("logo")) p.remove("logoSource");
             store.put(p);
             refresh();
           }
@@ -1777,6 +1778,7 @@ public class MainActivity extends Activity {
               String name = new Importer(this).asset(u);
               JSONObject p = store.person(q.getString("id"));
               p.put(kind, name);
+              if (kind.equals("logo")) p.remove("logoSource"); // picked by hand: automatic logos never replace it
               store.put(p);
             });
       }

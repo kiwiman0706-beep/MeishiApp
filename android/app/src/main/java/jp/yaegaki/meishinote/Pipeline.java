@@ -120,6 +120,7 @@ public final class Pipeline {
           JSONObject result = g.recognize(next);
           JSONObject p = s.person(id);
           apply(p, result);
+
           boolean contact =
               autoContact(c)
                   && !p.optString("name").trim().isEmpty()
@@ -130,6 +131,14 @@ public final class Pipeline {
           else p.remove("queue");
           if (p.optString("status").equals("review")) sum.review++;
           s.put(p);
+          // The logo comes with the same answer; without one, the company's website (no search).
+          if (p.optString("logo").isEmpty()) {
+            try {
+              Logo.auto(s, id, result.optString("logoBox"), "", null);
+            } catch (Exception ignored) {
+              // the card itself is read; the logo can be found later
+            }
+          }
           sum.read++;
         } else if (step.equals("nenga")) {
           progress.update("年賀状を読み取り中（残り" + left + "件）");
@@ -154,16 +163,15 @@ public final class Pipeline {
           // relogo: asked again for this card, so it replaces the logo it shares with its company.
           progress.update("会社ロゴを切り出し中（残り" + left + "件）" + label);
           if (g == null) g = new Gemini(c);
-          String logo = Logo.crop(s, next, g.logoBox(next).optString("box"));
           JSONObject p = s.person(id);
           String old = step.equals("relogo") ? p.optString("logo") : "";
           p.remove("queue");
           p.put("logoTried", true);
           s.put(p);
-          if (!logo.isEmpty()) {
-            Logo.share(s, id, logo, old);
-            sum.logos++;
-          } else sum.noLogo++;
+          final Gemini gem = g;
+          String box = next.getJSONArray("pages").length() > 0 ? g.logoBox(next).optString("box") : "";
+          if (Logo.auto(s, id, box, old, x -> gem.officialSite(x))) sum.logos++;
+          else sum.noLogo++;
         } else if (step.equals("contact")) {
           progress.update("連絡先に登録中 " + label);
           JSONObject p = s.person(id);

@@ -16,6 +16,7 @@ public class VaultCodecTest {
         .put("created", 1709600400123L).put("updated", 1760000000456L)
         .put("geo", new JSONObject().put("lat", 35.681).put("lng", 139.767).put("q", "東京都千代田区丸の内1-1-1"))
         .put("rawText", "山田 太郎\nサンプル株式会社\n部長")
+        .put("logo", "lg1.jpg").put("logoSource", "web:example.com")
         .put("contactRawId", 42).put("queue", "contact"); // device-only, must not be written
     p.put("pages", new JSONArray().put(new JSONObject().put("file", "a1-0.jpg")).put(new JSONObject().put("file", "a1-1.jpg")));
     p.put("sources", new JSONArray().put(new JSONObject().put("file", "a1.pdf").put("name", "scan.pdf").put("hash", "abc")));

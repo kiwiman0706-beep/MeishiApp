@@ -183,8 +183,10 @@ function logoPicks(people) {
     const k = companyKey(p);
     if (!k) continue;
     if (p.logo) has.add(k);
-    if (!(p.pages || []).length || p.logoTried || p.queue) continue;
-    if (!best.has(k) || p.created > best.get(k).created) best.set(k, p);
+    if (p.logoTried || p.queue) continue;
+    // Prefer a card with an image (its logo can be cut), then the newest.
+    const cur = best.get(k), img = (x) => ((x.pages || []).length ? 1 : 0);
+    if (!cur || img(p) > img(cur) || (img(p) === img(cur) && p.created > cur.created)) best.set(k, p);
   }
   return [...best].filter(([k]) => !has.has(k)).map(([, p]) => p.id);
 }

@@ -28,6 +28,8 @@ function setup(geminiResult) {
     toJpeg: async (b) => b,
     pdfPages: async (b) => [b, Buffer.concat([b, Buffer.from("2")])],
     crop: async (b, rectOf) => (rectOf(1000, 600) ? Buffer.from("logo-of-" + b) : null),
+    size: async (b) => (String(Buffer.from(b)).startsWith("PNG") ? { width: 180, height: 180 } : null),
+    toPng: async (b) => Buffer.from(b),
   };
   const backend = new Backend({
     store,

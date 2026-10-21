@@ -163,6 +163,15 @@ class VaultStore {
     return path.join(this.media, name);
   }
 
+  // Media go through the store, so the same backend runs on a browser store (web/).
+  async readMedia(name) {
+    return fs.promises.readFile(this.mediaFile(name));
+  }
+
+  async writeMedia(name, bytes) {
+    await fs.promises.writeFile(this.mediaFile(name), bytes);
+  }
+
   hashes() {
     const s = new Set();
     for (const { person } of this.byId.values()) for (const src of person.sources || []) if (src.hash) s.add(src.hash);

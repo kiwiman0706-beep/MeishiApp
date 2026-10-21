@@ -77,7 +77,10 @@ public final class Sync {
     for (String k : Store.FIELDS)
       if (base.optString(k).isEmpty() && !other.optString(k).isEmpty()) base.put(k, other.optString(k));
     for (String k : new String[] {"portrait", "logo", "rawText", "warnings"})
-      if (base.optString(k).isEmpty() && !other.optString(k).isEmpty()) base.put(k, other.optString(k));
+      if (base.optString(k).isEmpty() && !other.optString(k).isEmpty()) {
+        base.put(k, other.optString(k));
+        if (k.equals("logo")) base.put("logoSource", other.optString("logoSource"));
+      }
     union(base, other, "notes", "id");
     union(base, other, "audio", "file");
     union(base, other, "pages", "file");

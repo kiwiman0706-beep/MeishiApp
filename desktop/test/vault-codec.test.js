@@ -15,6 +15,7 @@ function sample() {
     contactRegistered: true, created: 1709600400123, updated: 1760000000456,
     geo: { lat: 35.681, lng: 139.767, q: "東京都千代田区丸の内1-1-1" },
     rawText: "山田 太郎\nサンプル株式会社\n部長", contactRawId: 42, queue: "contact",
+    logo: "lg1.jpg", logoSource: "web:example.com",
     pages: [{ file: "a1-0.jpg" }, { file: "a1-1.jpg" }],
     sources: [{ file: "a1.pdf", name: "scan.pdf", hash: "abc" }],
     notes: [

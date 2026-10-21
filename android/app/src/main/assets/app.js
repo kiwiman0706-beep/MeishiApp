@@ -276,12 +276,18 @@ function companyGroups(a) {
   const out = [...m.values()].map((g) => {
     const name = Object.entries(g.names).sort((x, y) => y[1] - x[1])[0]?.[0] || "会社・組織なし";
     const withLogo = g.people.filter((p) => p.logo).sort((x, y) => y.updated - x.updated)[0];
-    return { ...g, name, logo: withLogo?.logo || "", none: !g.key };
+    return { ...g, name, logo: withLogo?.logo || "", logoSource: withLogo?.logoSource || "", none: !g.key };
   });
   const byName = sort === "name" || sort === "company";
   return out.sort((x, y) =>
     x.none !== y.none ? (x.none ? 1 : -1) : byName ? x.name.localeCompare(y.name, "ja") : y.people.length - x.people.length || x.name.localeCompare(y.name, "ja"),
   );
+}
+// "card" → cut from a card, "web:<domain>" → that company's website, none → picked by hand.
+function logoFrom(src) {
+  if (src === "card") return "名刺から切り出し";
+  if (String(src || "").startsWith("web:")) return `${src.slice(4)} から取得`;
+  return "手動で登録";
 }
 function companyMark(g, big = false) {
   if (g.logo) return `<div class="cologo${big ? " big" : ""}"><img loading="lazy" src="${img(g.logo)}" alt="${esc(g.name)}のロゴ"></div>`;
@@ -294,17 +300,18 @@ function companyView(a) {
   companyList = companyGroups(a);
   const open = companyOpen && companyList.find((g) => g.key === companyOpen);
   if (open) {
-    const source = open.people.filter((p) => p.pages?.length).sort((x, y) => y.created - x.created)[0];
+    const source = [...open.people].sort((x, y) => (y.pages?.length ? 1 : 0) - (x.pages?.length ? 1 : 0) || y.created - x.created)[0];
     const cut =
       source && can("gemini") && !open.none
-        ? `<button class="outline" onclick="call('logoOne',{id:'${source.id}'})">${icon("spark")}${open.logo ? "名刺から切り出し直す" : "名刺からロゴを切り出す"}</button>`
+        ? `<button class="outline" onclick="call('logoOne',{id:'${source.id}'})">${icon("spark")}${open.logo ? "ロゴを探し直す" : "ロゴを探す"}</button>`
         : "";
-    return `<div class="cohead">${companyMark(open, true)}<div><button class="link" onclick="companyOpen='';updateList()">${icon("back")}会社一覧</button><h2>${esc(open.name)}</h2><small class="caption">${open.people.length}人</small></div></div>${cut ? `<div class="row gap">${cut}</div>` : ""}${personCards(open.people)}`;
+    const from = open.logo ? `<br>ロゴ：${esc(logoFrom(open.logoSource))}` : "";
+    return `<div class="cohead">${companyMark(open, true)}<div><button class="link" onclick="companyOpen='';updateList()">${icon("back")}会社一覧</button><h2>${esc(open.name)}</h2><small class="caption">${open.people.length}人${from}</small></div></div>${cut ? `<div class="row gap">${cut}</div>` : ""}${personCards(open.people)}`;
   }
-  const missing = companyList.filter((g) => !g.none && !g.logo && g.people.some((p) => p.pages?.length)).length;
+  const missing = companyList.filter((g) => !g.none && !g.logo).length;
   const tip =
     missing && can("gemini")
-      ? `<button class="setup" onclick="if(confirm('ロゴの無い${missing}社について、名刺の画像からGeminiでロゴを探して切り出します（1社1回・1円以下の目安）。続けますか？'))call('logoAll')">${icon("spark")}<span><b>ロゴの無い会社 ${missing}社</b><small>名刺の画像から会社ロゴを切り出す</small></span>${icon("next")}</button>`
+      ? `<button class="setup" onclick="if(confirm('ロゴの無い${missing}社について、名刺からロゴを切り出し、無ければ会社のウェブサイトから取得します（Gemini 1社1回・1円以下の目安）。続けますか？'))call('logoAll')">${icon("spark")}<span><b>ロゴの無い会社 ${missing}社</b><small>名刺から切り出し、無ければ会社のサイトから取得</small></span>${icon("next")}</button>`
       : "";
   return `${tip}<div class="cogrid">${companyList
     .map(
@@ -615,7 +622,7 @@ function detailMenu() {
       p.status === "confirmed" && !p.contactRawId && can("contacts") ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
       menuRow("download", "書類・手紙を添付", "契約書・案内状・手紙などを撮影・PDFで", "attachSheet()"),
       menuRow("user", "人物写真・会社ロゴ", p.portrait || p.logo ? "登録済み" : "画像検索して登録", "assetSheet()"),
-      p.pages.length && can("gemini") ? menuRow("spark", "名刺から会社ロゴを切り出す", "同じ会社でロゴの無い人にも使います", "closeModal();call('logoOne',{id:selected})") : "",
+      can("gemini") ? menuRow("spark", "会社ロゴを探す", "名刺から切り出し、無ければ会社のサイトから。同じ会社でロゴの無い人にも使います", "closeModal();call('logoOne',{id:selected})") : "",
       state.people.length > 1 ? menuRow("link", "別の名刺と統合", "同じ人の名刺をまとめる", "mergeSheet()") : "",
       p.rawText ? menuRow("list", "読み取った全文を見る", "", "report(getPerson().rawText)") : "",
       menuRow("trash", "この名刺を削除", "Google連絡先は削除されません", "closeModal();deletePerson()", "dangerrow"),
@@ -647,7 +654,7 @@ function assetSheet() {
     ]
       .map(
         ([k, l, ic]) =>
-          `<div class="assetbox"><small>${l}</small>${p[k] ? `<img src="${img(p[k])}" alt="${l}">` : `<div class="placeholder">${icon(ic)}</div>`}<button class="outline" onclick="call('search',{id:selected,kind:'${k}'})">${icon("search")}画像検索</button><button class="secondary" onclick="closeModal();call('asset',{id:selected,kind:'${k}'})">画像を選択</button>${p[k] ? `<button class="danger" onclick="if(confirm('画像の登録を解除しますか？')){closeModal();call('clearAsset',{id:selected,kind:'${k}'})}">解除</button>` : ""}</div>`,
+          `<div class="assetbox"><small>${l}${k === "logo" && p.logo ? `（${esc(logoFrom(p.logoSource))}）` : ""}</small>${p[k] ? `<img src="${img(p[k])}" alt="${l}">` : `<div class="placeholder">${icon(ic)}</div>`}<button class="outline" onclick="call('search',{id:selected,kind:'${k}'})">${icon("search")}画像検索</button><button class="secondary" onclick="closeModal();call('asset',{id:selected,kind:'${k}'})">画像を選択</button>${p[k] ? `<button class="danger" onclick="if(confirm('画像の登録を解除しますか？')){closeModal();call('clearAsset',{id:selected,kind:'${k}'})}">解除</button>` : ""}</div>`,
       )
       .join("")}</div>`,
   );

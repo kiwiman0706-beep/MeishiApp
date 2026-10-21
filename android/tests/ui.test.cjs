@@ -291,7 +291,8 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.screenshot({ path: path.join(screenshotDir, "17-companies.png") });
   await tile.click();
   assert.equal(await page.locator(".person").count(), 2);
-  await page.getByRole("button", { name: /名刺から切り出し直す/ }).click();
+  assert(await page.getByText("ロゴ：手動で登録").isVisible());
+  await page.getByRole("button", { name: /ロゴを探し直す/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.equal(calls.at(-1).action, "logoOne");
   await page.screenshot({ path: path.join(screenshotDir, "18-company.png") });

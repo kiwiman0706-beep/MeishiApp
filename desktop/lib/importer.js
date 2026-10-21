@@ -13,34 +13,38 @@ async function run(store, imaging, files, mode = "file", target = "", progress =
   if (files.length > 200) throw new Error("一度に200ファイルまで選択してください");
   if (mode !== "file" && mode !== "pair" && mode !== "page" && mode !== "all") mode = "file";
   if (target) mode = "all";
-  files = [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), "ja", { numeric: true }));
+  // A file is a path (desktop) or { name, read() } (browser).
+  files = files
+    .map((f) => (typeof f === "string" ? { name: path.basename(f), read: () => fs.promises.readFile(f) } : f))
+    .sort((a, b) => a.name.localeCompare(b.name, "ja", { numeric: true }));
   const seen = store.hashes();
   const docs = [], sources = [], errors = [];
   let skipped = 0;
   for (let i = 0; i < files.length; i++) {
-    const f = files[i], original = path.basename(f);
+    const f = files[i], original = f.name;
     progress(`画像を保存中 ${i + 1} / ${files.length}\n${original}`);
     try {
-      const buf = fs.readFileSync(f);
+      const buf = await f.read();
       if (buf.length > 100 * 1024 * 1024) throw new Error("ファイルが大きすぎます");
       const hash = crypto.createHash("sha256").update(buf).digest("hex");
       if (seen.has(hash)) {
         skipped++;
         continue;
       }
-      const pdf = /\.pdf$/i.test(f);
-      if (!pdf && !IMAGE.test(f)) throw new Error("画像かPDFではありません");
+      const pdf = /\.pdf$/i.test(original);
+      if (!pdf && !IMAGE.test(original)) throw new Error("画像かPDFではありません");
       const base = crypto.randomUUID();
       const srcName = base + (pdf ? ".pdf" : ".original");
       const jpegs = pdf ? await imaging.pdfPages(buf, 2400) : [await imaging.toJpeg(buf, 2400)];
       if (!jpegs.length) throw new Error("空のPDFです");
       if (jpegs.length > 100) throw new Error("PDFは100ページまでです");
-      fs.writeFileSync(store.mediaFile(srcName), buf);
-      const pages = jpegs.map((j, n) => {
+      await store.writeMedia(srcName, buf);
+      const pages = [];
+      for (const [n, j] of jpegs.entries()) {
         const name = pdf ? `${base}-${n}.jpg` : `${base}.jpg`;
-        fs.writeFileSync(store.mediaFile(name), j);
-        return { file: name, name: pdf ? `${original} / ${n + 1}` : original, source: srcName };
-      });
+        await store.writeMedia(name, j);
+        pages.push({ file: name, name: pdf ? `${original} / ${n + 1}` : original, source: srcName });
+      }
       docs.push(pages);
       sources.push({ file: srcName, name: original, hash, mime: pdf ? "application/pdf" : "image/jpeg" });
       seen.add(hash);
