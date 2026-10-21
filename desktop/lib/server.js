@@ -106,7 +106,7 @@ function start({ backend, store, uiDir, pdfDir, port, token, onReady }) {
       if (u.pathname === "/" || u.pathname === "/index.html") {
         // Same page as on Android, plus the HTTP bridge, and a CSP that lets it reach this server.
         let html = fs.readFileSync(path.join(uiDir, "index.html"), "utf8");
-        html = html.replace("connect-src 'none'", "connect-src 'self'").replace('<script src="/app.js"></script>', '<script src="/bridge.js"></script><script src="/app.js"></script>');
+        html = html.replace("connect-src 'none'", "connect-src 'self'").replace('<script src="app.js"></script>', '<script src="bridge.js"></script><script src="app.js"></script>');
         return send(res, 200, html, TYPES[".html"]);
       }
       const rel = path.normalize(decodeURIComponent(u.pathname)).replace(/^([/\\])+/, "");

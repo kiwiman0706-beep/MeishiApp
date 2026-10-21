@@ -16,8 +16,13 @@ const CAPS = ["pick", "folder", "gemini", "vault", "map", "export", "nenga", "at
 const NOT_HERE = "この操作はスマホ版（Android）で行えます";
 
 class Backend {
-  constructor({ store, settings, secrets, services, fetchImpl, info }) {
+  // platform / caps: what the UI may offer (the web version passes its own); webLogos: whether
+  // company websites can be fetched (not from a browser page: other sites refuse it).
+  constructor({ store, settings, secrets, services, fetchImpl, info, platform = "desktop", caps = CAPS, webLogos = true }) {
     this.info = info || (() => ({}));
+    this.platform = platform;
+    this.caps = caps;
+    this.webLogos = webLogos;
     this.store = store;
     this.settings = settings; // { get(k, d), set(obj) }
     this.secrets = secrets; // { get(), set(v) }
@@ -44,8 +49,8 @@ class Backend {
   state() {
     const s = this.settings;
     return {
-      platform: "desktop",
-      caps: CAPS,
+      platform: this.platform,
+      caps: this.caps,
       people: this.store.people(),
       keySet: !!this.secrets.get(),
       model: s.get("model", "gemini-2.5-flash"),
@@ -247,7 +252,8 @@ class Backend {
       case "bulkScan":
       case "pickFiles":
       case "pick": {
-        const files = await this.svc.openFiles();
+        // The action tells a phone browser whether to open the camera or the photo library.
+        const files = await this.svc.openFiles(false, action);
         if (files && files.length) await this.importFiles(files, q);
         return;
       }
@@ -410,6 +416,7 @@ class Backend {
             this.store.put(p);
             // The logo comes with the same answer; without one, the company's website (no search).
             if (!p.logo) await this.autoLogo(p, r.logoBox, "", false).catch(() => {});
+            await this.afterRecognized(this.store.person(next.id)).catch((e) => errors.push(`${p.name || "名刺"}: ${e.message}`));
           }
           done++;
         } catch (e) {
@@ -456,6 +463,9 @@ class Backend {
     return this.autoLogo(st.person(next.id), r.box, old, true, front);
   }
 
+  // After a card is read in the background (the web version registers the Google contact here).
+  async afterRecognized() {}
+
   cfg() {
     const s = this.settings;
     return { key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") };
@@ -469,6 +479,7 @@ class Backend {
       if (jpeg) return this.shareLogo(p, jpeg, ".jpg", old, "card");
     }
     const key = model.companyKey(p);
+    if (!this.webLogos) return false;
     if (!key || st.people().some((x) => x.logo && x.logo !== old && model.companyKey(x) === key && x.id !== p.id)) return false;
     const found = await weblogo.find(
       {

@@ -24,7 +24,7 @@ Android版（0.6.0〜）が実装済み。Windows/Mac版（DeskHatchプラグイ
 ## people/<ID>.json
 
 - 中身は人物レコード（端末内 `data.json` の `people[]` の1要素）から、**端末固有の項目を除いたもの**。
-  - 除く項目：`contactRawId`, `contactAccount`, `contactPhoto`, `queue`, `queueError`, `contactDuplicate`, `suggestion`, `contactUnlinked`, `calendarEventId`, `contactMerged`, `logoTried`, `kanaTried`
+  - 除く項目：`contactRawId`, `contactAccount`, `contactPhoto`, `queue`, `queueError`, `contactDuplicate`, `suggestion`, `contactUnlinked`, `calendarEventId`, `contactMerged`, `logoTried`, `kanaTried`, `contactPending`
 - `kind` が `nengaInbox`（差出人を読み取る前の年賀状）のレコードは同期しない
 - 年賀状の画像は `greetings[].files[].file` で参照する（`media/` に置く）。統合時は `greetings` も id で和集合
   - 共有する印：`contactRegistered: true`（どこかの端末でGoogle連絡先に登録済み。他端末は自動登録しない）

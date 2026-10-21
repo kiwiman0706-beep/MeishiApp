@@ -1,5 +1,11 @@
 # 開発引き継ぎ
 
+## 0.15.0での変更（ロゴの自動化・Web版）
+
+- ロゴ：`CARD_KEYS` に `logoBox`。読み取りと同じ回答でロゴ位置が来るので、読み取り直後に切り出す（`Pipeline` / デスクトップ `work`）。名刺に無ければ会社サイト（`WebLogo.java` / `desktop/lib/weblogo.js`：Web欄→会社メールのドメイン→（まとめて処理の時だけ）`Gemini.officialSite` のGoogle検索）。構造化データのlogo・apple-touch-icon・最大のicon・既定の場所の順、SVG除外、32px未満除外、PNG保存。出どころは `logoSource`（Vaultでは `logo_source`：`card` / `web:<ドメイン>`、無し＝手動）。名刺のロゴはサイトのロゴを置き換え、手動は置き換えない（`Logo.share` / `shareLogo`）。
+- メディアの読み書きはストア経由（`readMedia` / `writeMedia`）、取り込みの入力はパスか `{name, read()}`。デスクトップの `Backend` は `platform` / `caps` / `webLogos` を受け取り、読み取り後のフック `afterRecognized` を持つ（Web版が連絡先登録に使う）。共通UIのパスは相対（`media/…`、`lib/…`）。
+- Web版（`web/`）：`build.js` が共通UI・ブリッジ（`src/main.js` をesbuildで。`fs`/`path`/`crypto` は小さな代替、`Buffer` は注入）・Service Worker（アプリの保存と、`media/` をIndexedDBから返す）・pdf.js・マニフェストを `dist/` に作る。データは `WebStore`（IndexedDB。削除は墓標→次の同期でVaultのゴミ箱へ）。同期は `DriveVault`（Driveのmd5と、最後に読み書きした内容のハッシュで判定。両方変更は `model.syncMerge`。編集は削除に勝つ、大量欠落で停止、手書きノートにid、`nengaInbox` は送らない。画像は初めて表示したときにVaultから取得）。連絡先は `WebBackend`＋`contacts.body`（People API、写真は900px四角）。Googleのトークンはメモリだけ、切れたらホームに「Googleにログイン」。テスト：`npm test`（同期をDriveの偽物で、連絡先の形）、`test/e2e.cjs`（実ブラウザで取り込み→読み取り→ロゴ→再読み込み）。GitHub Pagesへは `.github/workflows/pages.yml`。
+
 ## 0.14.0での変更（GitHubリリース・自動更新）
 
 - 版はAndroid・デスクトップで共通（0.14.0から）。タグ `v<版>` を送ると `.github/workflows/release.yml` がテスト→APK・Windowsインストーラー（NSIS、ユーザー単位）・Mac dmg/zip を作りReleaseを公開。手順と署名Secretは `docs/RELEASING.md`。

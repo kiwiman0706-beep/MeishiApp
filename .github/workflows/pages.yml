@@ -1,0 +1,48 @@
+# The web version (PWA, for iPhone) on GitHub Pages: https://kiwiman0706-beep.github.io/MeishiApp/
+# Built from web/ (with the shared UI in android/ and the backend in desktop/lib) on every push.
+# Needs Settings → Pages → Source: "GitHub Actions" (once).
+name: Web (GitHub Pages)
+
+on:
+  push:
+    branches: [claude/elegant-curie-y0ku3h]
+    paths:
+      - "web/**"
+      - "desktop/lib/**"
+      - "desktop/scripts/sync-ui.js"
+      - "android/app/src/main/assets/**"
+      - "android/app/src/main/java/jp/yaegaki/meishinote/Gemini.java"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Test and build
+        working-directory: web
+        run: npm ci && npm test && npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: web/dist }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

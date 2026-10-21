@@ -60,6 +60,13 @@ jobs:
           npx playwright install --with-deps chromium
           NODE_PATH="$(npm root -g)" node android/tests/ui.test.cjs
           NODE_PATH="$(npm root -g)" node desktop/test/e2e/ui.e2e.cjs
+      - name: Web version (unit, build, browser)
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run build
+          NODE_PATH="$(npm root -g)" node test/e2e.cjs
 
   android:
     needs: test

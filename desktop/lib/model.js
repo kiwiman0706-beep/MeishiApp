@@ -191,7 +191,50 @@ function logoPicks(people) {
   return [...best].filter(([k]) => !has.has(k)).map(([, p]) => p.id);
 }
 
+// ---- sync (Sync.java) ---------------------------------------------------------------------
+// Both sides changed: the newer edit wins field by field where it has a value; lists are unioned
+// so nothing captured on either side is lost. Device-only fields stay the local ones.
+function syncMerge(local, remote) {
+  const remoteNewer = (remote.updated || 0) > (local.updated || 0);
+  const base = JSON.parse(JSON.stringify(remoteNewer ? remote : local));
+  const other = remoteNewer ? local : remote;
+  for (const k of V.FIELDS) if (!String(base[k] || "") && String(other[k] || "")) base[k] = other[k];
+  for (const k of ["portrait", "logo", "rawText", "warnings"])
+    if (!base[k] && other[k]) {
+      base[k] = other[k];
+      if (k === "logo") base.logoSource = other.logoSource;
+    }
+  const union = (key, id) => {
+    const seen = new Set((base[key] || []).map((x) => x[id]));
+    base[key] = [...(base[key] || []), ...(other[key] || []).filter((x) => !seen.has(x[id]))];
+  };
+  union("notes", "id");
+  union("audio", "file");
+  union("pages", "file");
+  union("sources", "file");
+  union("greetings", "id");
+  if (base.notDuplicate || other.notDuplicate) base.notDuplicate = [...new Set([...(base.notDuplicate || []), ...(other.notDuplicate || [])])];
+  for (const k of V.LOCAL) {
+    if (local[k] !== undefined) base[k] = local[k];
+    else delete base[k];
+  }
+  base.updated = Math.max(local.updated || 0, remote.updated || 0);
+  return base;
+}
+
+// Files a card refers to (Sync.media): what has to travel with its note.
+function media(p) {
+  const out = new Set();
+  for (const k of ["portrait", "logo"]) if (p[k]) out.add(p[k]);
+  for (const k of ["pages", "sources", "audio"])
+    for (const o of p[k] || []) if (o.file && !(k === "audio" && o.state === "recording")) out.add(o.file);
+  for (const g of p.greetings || []) for (const f of g.files || []) if (f.file) out.add(f.file);
+  return out;
+}
+
 module.exports = {
+  syncMerge,
+  media,
   companyKey,
   logoRect,
   logoPicks, empty, edit, merge, applyResult, INBOX, NENGA_KINDS, matchSender, season, greeting, hasGreeting, today, csv, nengaCsv };

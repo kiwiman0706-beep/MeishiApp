@@ -104,7 +104,8 @@ const getPerson = () => state.people.find((p) => p.id === selected),
   can = (cap) => !Array.isArray(state.caps) || state.caps.includes(cap),
   phoneOnly = (cap, html) => (can(cap) ? html : ""),
   visible = (p) => p.kind !== "nengaInbox",
-  img = (f) => "/media/" + encodeURIComponent(f),
+  // Relative: the page is served at a site root (Android, desktop) or under a path (web).
+  img = (f) => "media/" + encodeURIComponent(f),
   status = (p) =>
     ({ new: "未認識", review: "要確認", confirmed: "確認済み" })[p.status] ||
     "未認識";
@@ -346,6 +347,10 @@ function home() {
   const updateBanner = upd
     ? `<button class="setup drive" onclick="call('installUpdate')">${icon("download")}<span><b>新しい版 ${esc(upd.version)}</b><small>${upd.ready ? "押すと再起動して更新します" : state.platform === "desktop" ? "ダウンロードページを開きます" : "押すとブラウザでAPKをダウンロードします。終わったら開いてインストール"}</small></span>${icon("next")}</button>`
     : "";
+  // Web: Google sign-in lasts about an hour and needs a tap to renew.
+  const googleBanner = state.googleNeeded
+    ? `<button class="setup" onclick="call('syncNow')">${icon("cloud")}<span><b>Googleにログイン</b><small>同期と連絡先の登録を続けます</small></span>${icon("next")}</button>`
+    : "";
   const dupCount = dupes().length;
   const dupBanner = dupCount
     ? `<button class="setup" onclick="dupSheet()">${icon("link")}<span><b>重複の可能性 ${dupCount}件</b><small>統合・削除するか、別人として扱えます</small></span>${icon("next")}</button>`
@@ -359,7 +364,7 @@ function home() {
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${updateBanner}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${updateBanner}${googleBanner}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
     ["cards", "リスト", "list"],
     ["table", "表", "table"],
     ["calendar", "カレンダー", "clock"],
@@ -480,14 +485,14 @@ function mountMap() {
   if (!window.L) {
     if (mapLoading) return;
     mapLoading = true;
-    for (const href of ["/lib/leaflet.css", "/lib/MarkerCluster.css", "/lib/MarkerCluster.Default.css"]) {
+    for (const href of ["lib/leaflet.css", "lib/MarkerCluster.css", "lib/MarkerCluster.Default.css"]) {
       const l = document.createElement("link");
       l.rel = "stylesheet";
       l.href = href;
       document.head.appendChild(l);
     }
-    loadScript("/lib/leaflet.js")
-      .then(() => loadScript("/lib/leaflet.markercluster.js"))
+    loadScript("lib/leaflet.js")
+      .then(() => loadScript("lib/leaflet.markercluster.js"))
       .then(() => {
         mapLoading = false;
         afterRender();
@@ -1185,6 +1190,18 @@ function nengaPage() {
       : ""
   }<button class="outline full gap" onclick="call('export',{kind:'nenga',year:${y}})">${icon("table")}${y}年の宛名リストをCSVで書き出す</button><p class="caption">宛名リストは、今年か昨年にやり取りのある人（郵便番号・住所・送受信・喪中）です。宛名印刷ソフトに読み込めます。</p>`;
 }
+// Web version: the user's own OAuth client (Web application) for Drive and Contacts.
+function googleSheet() {
+  modal(
+    `<h2>${icon("cloud")} Googleアカウント</h2><p class="caption">Googleドライブ（Theta Vault）とGoogle連絡先を使うために、Google CloudでつくったOAuthクライアントID（種類：ウェブ アプリケーション）を入れます。手順は docs/WEB_SETUP.md にあります。</p><label class="label">OAuthクライアントID</label><input id="gclient" value="${esc(state.googleClientId || "")}" placeholder="123456-xxxx.apps.googleusercontent.com" autocomplete="off" autocapitalize="off"><button class="secondary full gap" onclick="call('settings',{googleClientId:$('gclient').value})">保存</button>${
+      state.googleClientId
+        ? state.googleSignedIn
+          ? `<p class="caption gap">ログイン中${state.contactAccount ? "：" + esc(state.contactAccount) : ""}</p><button class="outline full" onclick="closeModal();call('googleSignOut')">ログアウト</button>`
+          : `<button class="primary full gap" onclick="closeModal();call('googleSignIn')">${icon("user")}Googleにログイン</button>`
+        : ""
+    }<p class="caption gap">ログインは約1時間で切れます。切れたらホーム画面の「Googleにログイン」を押してください（iPhoneでは、押したときにしかログイン画面を開けないため）。</p>`,
+  );
+}
 function syncStart() {
   if (
     confirm(
@@ -1210,9 +1227,9 @@ function menuPage() {
         : [menuRow("cloud", "Google DriveのScanSnapフォルダを設定", "PDFを取り込み、済んだら「登録済み」へ移動", "driveBrowse()")]),
       phoneOnly("scan", menuRow("camera", "まとめて撮影", "何枚も続けて撮影（撮影ボタンの長押しでも開けます）", "bulkSheet()")),
       menuRow("image", "画像・PDFから取り込む", "写真やスキャンをまとめて", "importSheet('pick')"),
-      menuRow("folder", "ScanSnapフォルダから取り込む", "フォルダ内を一括で", "importSheet('folder')"),
-      state.folder ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
-      phoneOnly("scan", menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})")),
+      phoneOnly("folder", menuRow("folder", "ScanSnapフォルダから取り込む", "フォルダ内を一括で", "importSheet('folder')")),
+      state.folder && can("folder") ? menuRow("rotate", "前回のフォルダを再確認", "新しい名刺だけ取り込む", "importSheet('rescan')") : "",
+      phoneOnly("camera", menuRow("camera", "通常のカメラで撮影", "スキャン画面が使えない場合", "call('camera',{id:'',auto:true})")),
       menuRow("edit", "手入力で追加", "画像なしで登録", "manualAdd()"),
       phoneOnly("zipImport", menuRow("download", "ZIPから一括取り込み", "名刺画像だけのZIP（Eightの画像など）・CSV付きZIP", "importZipSheet()")),
     ],
@@ -1226,6 +1243,7 @@ function menuPage() {
   ])}${section("同期", !can("sync") ? [
     menuRow("folder", "Theta Vault フォルダ", esc(state.vaultPath || "未設定") + (state.vaultWarnings?.length ? ` ・ ⚠ 読み込めないノート ${state.vaultWarnings.length}件` : ""), "call('chooseVault')", state.vaultWarnings?.length ? "attnrow" : ""),
   ] : [
+    !can("google") ? "" : menuRow("user", "Googleアカウント", state.googleClientId ? (state.googleSignedIn ? "ログイン中" + (state.contactAccount ? "：" + esc(state.contactAccount) : "") : "未ログイン") : "未設定（同期・連絡先に必要）", "googleSheet()", state.googleClientId ? "" : "attnrow"),
     state.syncEnabled
       ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "Theta Vault ・ 最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
       : menuRow("cloud", "Google Driveで同期を始める", "Theta Vault（Obsidian形式）でスマホ・PCと共有", "syncStart()"),
@@ -1239,7 +1257,7 @@ function menuPage() {
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
     !can("contacts") ? "" : menuRow("user", "連絡先の登録設定", (state.contactAccount || "アカウント未選択") + " ・ 写真：" + ({ card: "名刺", portrait: "人物写真", logo: "ロゴ", none: "なし" }[state.contactPhoto || "card"]), "contactSettingsSheet()"),
-  ])}<p class="footnote">Theta Meishi Hatch ${state.version ? esc(state.version) + " ・ " : ""}${state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
+  ])}<p class="footnote">Theta Meishi Hatch ${state.version ? esc(state.version) + " ・ " : ""}${state.platform === "web" ? "Web版（iPhone・ブラウザ）<br>データはこのブラウザに保存し、Googleドライブの Theta Vault と同期します。" : state.platform === "desktop" ? "デスクトップ版<br>データは Theta Vault フォルダ（Markdown＋画像）に保存されます。" : "Android 8以上<br>端末内保存 / 利用者ネットワークなし。アンインストールでデータが消えるため、定期的にバックアップしてください。"}</p>`;
 }
 function geminiPage() {
   if (!settingsDraft)

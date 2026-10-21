@@ -37,6 +37,7 @@
 | Android ホーム画面ウィジェット | アプリごとの「最近」の一覧＋主操作ボタン1つ | ✔ |
 | Android TV / Google TV | 同じAPKをLeanback対応。閲覧中心、リモコン操作 | ✔（順次） |
 | Windows / Mac | Electron単体アプリ（トレイ常駐）。Vaultフォルダを直接読み書き | ✔ |
+| Web（PWA）・iPhone | 共通UI＋デスクトップの処理をブラウザで。データはIndexedDB、VaultとはGoogle Drive APIで同期。GitHub Pagesで配信 | ✔ |
 | DeskHatch | 同じ中身をドロワーとして表示（§6） | ✔ |
 | テレビへのキャスト | Theta Link（§7） | ✔（順次） |
 
@@ -46,7 +47,8 @@
 - 端末 → UI：`window.onNative({type, data})`。`type` は `state`（全状態）、`toast`、`report`、`error`、`busy`、`open` など。
 - `state` に `platform`（`android` / `desktop`）と `caps`（使える機能の一覧）を含め、UIは `caps` にない操作を出さない。`caps` が無いときは全機能（Android）。
 - デスクトップでは同じ2つをHTTPで提供する：`POST /api/call`（本文が `Native.call` のJSON）、`GET /api/events`（SSE、1行が `onNative` の引数）。
-- Meishiのcaps：Android＝全部。デスクトップ＝`pick folder gemini vault map export nenga attach`（`contacts calendar scan record drive zipImport backup` は無し）。
+- Meishiのcaps：Android＝全部。デスクトップ＝`pick folder gemini vault map export nenga attach`。Web＝`pick scan gemini map export nenga attach contacts sync google`（Google連絡先はPeople API、同期はDrive API）。`camera`（スキャナーが使えない時の通常カメラ）・`widget`・`record`・`calendar`・`drive`（ScanSnapのDriveフォルダ）・`zipImport`・`backup` はAndroidだけ。
+- Web版：ブリッジは同じページ内（`window.Native` → `WebBackend`）。Googleのログイン画面はタップの中でしか開けない（Safari）ため、Googleを使う操作は最初にトークンを求める。
 
 ### 4.2 Androidウィジェット
 

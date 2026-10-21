@@ -4,12 +4,13 @@
 
 ## ダウンロード
 
-[Releases](https://github.com/kiwiman0706-beep/MeishiApp/releases/latest) から、Android（APK）・Windows（インストーラー）・Mac（dmg）を入手できます。新しい版はアプリが知らせます（Windowsは自動更新）。リリースの作り方は [`docs/RELEASING.md`](docs/RELEASING.md)。
+[Releases](https://github.com/kiwiman0706-beep/MeishiApp/releases/latest) から、Android（APK）・Windows（インストーラー）・Mac（dmg）を入手できます。iPhoneは [Web版](https://kiwiman0706-beep.github.io/MeishiApp/)（Safariでホーム画面に追加）。新しい版はアプリが知らせます（Windowsは自動更新）。リリースの作り方は [`docs/RELEASING.md`](docs/RELEASING.md)。
 
 | フォルダ | 中身 |
 | --- | --- |
 | `android/` | Androidアプリ（Java + WebView UI）。ビルド方法は `android/README.md` |
 | `desktop/` | Windows / Mac版（Electron）。Vaultフォルダを直接読み書きし、DeskHatchのドロワーにも表示できる。使い方は `desktop/README.md` |
+| `web/` | Web版（PWA。iPhoneのSafariでホーム画面に追加）。共通UIとデスクトップの処理をブラウザで動かす。`https://kiwiman0706-beep.github.io/MeishiApp/`、設定は `docs/WEB_SETUP.md` |
 | `docs/` | 引き継ぎメモ・検証記録・ロードマップ |
 
 Theta Hatch シリーズ共通の約束は [`docs/THETA_HATCH_SPEC.md`](docs/THETA_HATCH_SPEC.md)、今後の予定は [`docs/ROADMAP.md`](docs/ROADMAP.md) を参照してください。
