@@ -1261,11 +1261,27 @@ public class MainActivity extends Activity {
       case "installUpdate":
         {
           JSONObject u = UpdateCheck.pending(this, versionName());
-          String link = u == null ? "" : u.optString("url");
-          // Only the project's own release downloads are opened.
-          if (!link.startsWith("https://github.com/kiwiman0706-beep/MeishiApp/releases/download/"))
-            link = "https://github.com/kiwiman0706-beep/MeishiApp/releases/latest";
-          startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link)));
+          if (u == null) {
+            event("toast", "最新の版です");
+            break;
+          }
+          // Installing from other sources has to be allowed once for this app.
+          if (!UpdateInstaller.allowed(this)) {
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+            event("toast", "「この提供元のアプリを許可」をオンにして、戻ってからもう一度押してください");
+            break;
+          }
+          task(
+              "新しい版をダウンロード中",
+              () -> {
+                try {
+                  UpdateInstaller.install(this, UpdateInstaller.download(this, u));
+                } catch (Exception e) {
+                  // Fallback: the browser download, as before.
+                  startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kiwiman0706-beep/MeishiApp/releases/latest")));
+                  throw e;
+                }
+              });
           break;
         }
       case "pinWidget":
@@ -1862,6 +1878,25 @@ public class MainActivity extends Activity {
         ProcessingService.requestSync(this);
     } catch (Exception ignored) {
     }
+  }
+
+  // Out of sight with an update downloaded: install it now if Android lets this app do so without
+  // asking (it then restarts on the new version the next time it is opened).
+  @Override
+  protected void onStop() {
+    super.onStop();
+    if (store == null || !RecordingService.activeId.isEmpty() || ProcessingService.running || busy) return;
+    if (!UpdateInstaller.silent(this)) return;
+    io.execute(
+        () -> {
+          try {
+            JSONObject u = UpdateCheck.pending(this, versionName());
+            File apk = u == null ? null : UpdateInstaller.ready(this, u.getString("version"));
+            if (apk != null) UpdateInstaller.install(this, apk);
+          } catch (Exception ignored) {
+            // the banner still offers it
+          }
+        });
   }
 
   // Leaving the app with unsynced edits: push them while we are still allowed to start work.

@@ -345,7 +345,17 @@ function home() {
     : "";
   const upd = state.update;
   const updateBanner = upd
-    ? `<button class="setup drive" onclick="call('installUpdate')">${icon("download")}<span><b>新しい版 ${esc(upd.version)}</b><small>${upd.ready ? "押すと再起動して更新します" : state.platform === "desktop" ? "ダウンロードページを開きます" : "押すとブラウザでAPKをダウンロードします。終わったら開いてインストール"}</small></span>${icon("next")}</button>`
+    ? `<button class="setup drive" onclick="call('installUpdate')">${icon("download")}<span><b>新しい版 ${esc(upd.version)}</b><small>${
+        upd.error
+          ? "⚠ " + esc(upd.error) + " ・ 押すともう一度"
+          : state.platform === "desktop"
+            ? upd.ready
+              ? "押すと再起動して更新します"
+              : "ダウンロードページを開きます"
+            : upd.ready
+              ? "準備できました。押すと更新します（アプリを閉じている間に自動で入ることもあります）"
+              : "押すとダウンロードして更新します"
+      }</small></span>${icon("next")}</button>`
     : "";
   // Web: Google sign-in lasts about an hour and needs a tap to renew.
   const googleBanner = state.googleNeeded

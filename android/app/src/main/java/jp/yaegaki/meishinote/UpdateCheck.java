@@ -37,7 +37,9 @@ public final class UpdateCheck {
       if (a.optString("name").endsWith(".apk"))
         return new JSONObject()
             .put("version", release.optString("tag_name").replaceFirst("^v", ""))
-            .put("url", a.optString("browser_download_url"));
+            .put("url", a.optString("browser_download_url"))
+            // GitHub publishes each file's checksum ("sha256:…"); the download is checked against it.
+            .put("sha256", a.optString("digest").startsWith("sha256:") ? a.optString("digest").substring(7) : "");
     }
     return null;
   }
@@ -60,11 +62,25 @@ public final class UpdateCheck {
       JSONObject r = parse(new JSONObject(body));
       String was = prefs.getString("updateVersion", "");
       if (r == null || compare(r.getString("version"), current) <= 0) {
-        prefs.edit().remove("updateVersion").remove("updateUrl").apply();
+        prefs.edit().remove("updateVersion").remove("updateUrl").remove("updateFileVersion").apply();
+        File[] old = UpdateInstaller.dir(c).listFiles(); // the APK of the version now installed
+        for (int i = 0; old != null && i < old.length; i++) old[i].delete();
         return !was.isEmpty();
       }
-      prefs.edit().putString("updateVersion", r.getString("version")).putString("updateUrl", r.getString("url")).apply();
-      return !was.equals(r.getString("version"));
+      prefs.edit()
+          .putString("updateVersion", r.getString("version"))
+          .putString("updateUrl", r.getString("url"))
+          .putString("updateSha256", r.optString("sha256"))
+          .remove("updateError")
+          .apply();
+      // On Wi-Fi the new version is fetched now, so it is ready to install.
+      if (UpdateInstaller.unmetered(c))
+        try {
+          UpdateInstaller.download(c, pending(c, current));
+        } catch (Exception e) {
+          // offered again from the banner
+        }
+      return true;
     } catch (Exception e) {
       return false; // offline: try again later
     }
@@ -74,6 +90,11 @@ public final class UpdateCheck {
     SharedPreferences prefs = c.getSharedPreferences("prefs", 0);
     String v = prefs.getString("updateVersion", "");
     if (v.isEmpty() || compare(v, current) <= 0) return null;
-    return new JSONObject().put("version", v).put("url", prefs.getString("updateUrl", "")).put("ready", false);
+    return new JSONObject()
+        .put("version", v)
+        .put("url", prefs.getString("updateUrl", ""))
+        .put("sha256", prefs.getString("updateSha256", ""))
+        .put("ready", UpdateInstaller.ready(c, v) != null)
+        .put("error", prefs.getString("updateError", ""));
   }
 }

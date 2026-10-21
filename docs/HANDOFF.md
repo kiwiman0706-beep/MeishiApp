@@ -1,6 +1,8 @@
 # 開発引き継ぎ
 
-## 0.15.0での変更（ロゴの自動化・Web版）
+## 0.15.0での変更（ロゴの自動化・Web版・Androidの自動更新）
+
+- Androidの自動更新：`UpdateCheck` が新しい版を見つけるとWi-FiならAPKを `files/updates/` へダウンロード（`UpdateInstaller.download`、Releaseのdigestで検証、URLはこのリポジトリのReleaseに限定）。お知らせを押すと `PackageInstaller` でインストール（未許可なら「不明なアプリ」の設定画面へ）。`setRequireUserAction(NOT_REQUIRED)` と `UPDATE_PACKAGES_WITHOUT_USER_ACTION` で、Android 12以降・自分がインストール元のときは `onStop`（画面を離れた時、録音中・処理中でなければ）に確認なしで入れる。失敗理由は `updateError` としてお知らせに出す。
 
 - ロゴ：`CARD_KEYS` に `logoBox`。読み取りと同じ回答でロゴ位置が来るので、読み取り直後に切り出す（`Pipeline` / デスクトップ `work`）。名刺に無ければ会社サイト（`WebLogo.java` / `desktop/lib/weblogo.js`：Web欄→会社メールのドメイン→（まとめて処理の時だけ）`Gemini.officialSite` のGoogle検索）。構造化データのlogo・apple-touch-icon・最大のicon・既定の場所の順、SVG除外、32px未満除外、PNG保存。出どころは `logoSource`（Vaultでは `logo_source`：`card` / `web:<ドメイン>`、無し＝手動）。名刺のロゴはサイトのロゴを置き換え、手動は置き換えない（`Logo.share` / `shareLogo`）。
 - メディアの読み書きはストア経由（`readMedia` / `writeMedia`）、取り込みの入力はパスか `{name, read()}`。デスクトップの `Backend` は `platform` / `caps` / `webLogos` を受け取り、読み取り後のフック `afterRecognized` を持つ（Web版が連絡先登録に使う）。共通UIのパスは相対（`media/…`、`lib/…`）。

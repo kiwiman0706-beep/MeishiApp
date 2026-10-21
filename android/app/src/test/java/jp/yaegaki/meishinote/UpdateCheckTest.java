@@ -24,10 +24,11 @@ public class UpdateCheckTest {
                 "assets",
                 new JSONArray()
                     .put(new JSONObject().put("name", "ThetaMeishiHatch-Setup-0.15.0.exe").put("browser_download_url", "x"))
-                    .put(new JSONObject().put("name", "theta-meishi-hatch-0.15.0.apk").put("browser_download_url", "https://github.com/a.apk")));
+                    .put(new JSONObject().put("name", "theta-meishi-hatch-0.15.0.apk").put("browser_download_url", "https://github.com/a.apk").put("digest", "sha256:abc123")));
     JSONObject u = UpdateCheck.parse(r);
     assertEquals("0.15.0", u.getString("version"));
     assertEquals("https://github.com/a.apk", u.getString("url"));
+    assertEquals("abc123", u.getString("sha256")); // the download is checked against it
     assertNull(UpdateCheck.parse(new JSONObject().put("tag_name", "v1").put("assets", new JSONArray())));
     assertNull(UpdateCheck.parse(r.put("draft", true)));
   }
