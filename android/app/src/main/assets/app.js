@@ -27,6 +27,7 @@ const paths = {
     "M12 3l2 3 4-1 1 4 3 3-3 2 1 4-4 1-4 3-2-3-4 1-1-4-3-3 3-2-1-4 4-1z M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6",
   back: "M15 5l-7 7 7 7",
   next: "M9 5l7 7-7 7",
+  help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5 M12 16.8v.2",
   down: "M5 9l7 7 7-7",
   edit: "M4 16l12-12 4 4L8 20H4z M13 7l4 4",
   check: "M4 12l5 5L20 6",
@@ -1047,7 +1048,52 @@ function contactSettingsSheet() {
   );
 }
 let driveStack = [];
-function driveBrowse() {
+// ---- Google Cloud setup guide (the one-time part of DRIVE_SETUP.md / WEB_SETUP.md, in the app) ----
+const setupDone = new Set();
+let setupNext = "";
+function copyText(text) {
+  const native = () => call("copyText", { text });
+  if (navigator.clipboard && window.isSecureContext && state.platform === "web")
+    navigator.clipboard.writeText(text).then(() => toast("コピーしました"), native);
+  else native();
+}
+function setupSteps() {
+  const web = state.platform === "web";
+  const copy = (label, value) =>
+    `<div class="copyrow"><small>${label}</small><code>${esc(value)}</code><button class="outline noflex" onclick="copyText('${esc(value)}')">コピー</button></div>`;
+  const steps = [
+    ["project", "プロジェクトを作る", "名前は「meishi」など何でも。Gemini APIキー用に作ったプロジェクトがあれば、それを選んで次へ。", "projectcreate", ""],
+    ["drive", "Google Drive API を有効にする", "開いた画面で「有効にする」。（画面上部のプロジェクトが、1で作ったものになっているか確認）", "apis/library/drive.googleapis.com", ""],
+    ...(web ? [["people", "Google People API を有効にする", "連絡先の登録に使います。「有効にする」。", "apis/library/people.googleapis.com", ""]] : []),
+    ["consent", "同意画面（Google Auth Platform）を作る", "「開始」→ アプリ名「Theta Meishi Hatch」、サポートメールに自分のアドレス → 対象は「外部」→ 連絡先に自分のアドレス → 同意して「作成」。", "auth/overview", ""],
+    ["testuser", "テストユーザーに自分を追加", "「対象」の「テストユーザー」→「Add users」→ 名刺に使うGoogleアカウント（ログインで選ぶもの）を追加して保存。", "auth/audience", ""],
+    web
+      ? ["client", "Web用のクライアントを作る", "種類「ウェブ アプリケーション」→「承認済みの JavaScript 生成元」に下のアドレスを追加 → 作成。出てきた「クライアントID」をコピーして、メニューの「Googleアカウント」に貼り付けます。", "auth/clients/create", copy("JavaScript 生成元", location.origin)]
+      : ["client", "Android用のクライアントを作る", "種類「Android」→ 下の2つを貼り付けて「作成」。クライアントIDはアプリに入れる必要はありません。", "auth/clients/create", (state.appPackage ? copy("パッケージ名", state.appPackage) : "") + (state.appSha1 ? copy("SHA-1 証明書フィンガープリント", state.appSha1) : "")],
+  ];
+  return steps;
+}
+function setupGuide(reason = "", next = setupNext) {
+  setupNext = next;
+  const steps = setupSteps();
+  const done = steps.filter(([k]) => setupDone.has(k)).length;
+  modal(
+    `<h2>${icon("cloud")} Google連携の初期設定</h2>${reason ? `<div class="tip warning">${esc(reason)}</div>` : ""}<p class="caption">${
+      state.platform === "web" ? "Googleドライブと連絡先" : "Googleドライブ（同期・ScanSnapフォルダ）"
+    }を使うには、Google Cloudに「このアプリ」を1回だけ登録します。無料です。各手順の「開く」でGoogle Cloudがブラウザで開きます（PCで作業すると楽です）。</p><ol class="setup-steps">${steps
+      .map(
+        ([k, title, how, path, extra], i) =>
+          `<li class="${setupDone.has(k) ? "done" : ""}"><label class="stepcheck"><input type="checkbox" ${setupDone.has(k) ? "checked" : ""} onchange="this.checked?setupDone.add('${k}'):setupDone.delete('${k}');setupGuide()"><b>${i + 1}. ${title}</b></label><small>${how}</small>${extra}<button class="outline" onclick="${`call('openUrl',{url:'https://console.cloud.google.com/${path}'})`}">${icon("next")}開く</button></li>`,
+      )
+      .join("")}</ol><p class="caption">${done}/${steps.length} 完了。作ったばかりの設定は、反映まで数分〜数十分かかることがあります。</p>${
+      state.platform === "web"
+        ? `<button class="primary full gap" onclick="googleSheet()">${icon("user")}クライアントIDを入れる</button>`
+        : `<button class="primary full gap" onclick="closeModal();${setupNext === "drive" ? "driveBrowse(true)" : "call('syncNow')"}">${icon("check")}${setupNext === "drive" ? "設定できたのでフォルダを選ぶ" : "設定できたので接続を試す"}</button>`
+    }`,
+  );
+}
+function driveBrowse(skipGuide) {
+  if (!skipGuide && state.driveAuthorized === false) return setupGuide("", "drive");
   driveStack = [{ id: "root", name: "マイドライブ" }];
   call("driveFolders", { parent: "root" });
 }
@@ -1207,7 +1253,7 @@ function nengaPage() {
 // Web version: the user's own OAuth client (Web application) for Drive and Contacts.
 function googleSheet() {
   modal(
-    `<h2>${icon("cloud")} Googleアカウント</h2><p class="caption">Googleドライブ（Theta Vault）とGoogle連絡先を使うために、Google CloudでつくったOAuthクライアントID（種類：ウェブ アプリケーション）を入れます。手順は docs/WEB_SETUP.md にあります。</p><label class="label">OAuthクライアントID</label><input id="gclient" value="${esc(state.googleClientId || "")}" placeholder="123456-xxxx.apps.googleusercontent.com" autocomplete="off" autocapitalize="off"><button class="secondary full gap" onclick="call('settings',{googleClientId:$('gclient').value})">保存</button>${
+    `<h2>${icon("cloud")} Googleアカウント</h2><p class="caption">Googleドライブ（Theta Vault）とGoogle連絡先を使うために、Google CloudでつくったOAuthクライアントID（種類：ウェブ アプリケーション）を入れます。<button class="link" onclick="setupGuide()">作り方（初期設定ガイド）</button></p><label class="label">OAuthクライアントID</label><input id="gclient" value="${esc(state.googleClientId || "")}" placeholder="123456-xxxx.apps.googleusercontent.com" autocomplete="off" autocapitalize="off"><button class="secondary full gap" onclick="call('settings',{googleClientId:$('gclient').value})">保存</button>${
       state.googleClientId
         ? state.googleSignedIn
           ? `<p class="caption gap">ログイン中${state.contactAccount ? "：" + esc(state.contactAccount) : ""}</p><button class="outline full" onclick="closeModal();call('googleSignOut')">ログアウト</button>`
@@ -1233,6 +1279,7 @@ function upgradeSheet() {
   );
 }
 function syncStart() {
+  if (state.platform === "web" ? !state.googleClientId : state.driveAuthorized === false) return setupGuide("", "sync");
   if (
     confirm(
       "Google Driveのマイドライブに「Theta Vault」フォルダを作り、名刺を1人1つのMarkdown（Obsidianで開ける形式）と画像・録音で同期します。他の端末で同じGoogleアカウントの同期をオンにすると共有され、PCではObsidianで閲覧・編集できます。始めますか？",
@@ -1273,7 +1320,8 @@ function menuPage() {
   ])}${section("同期", !can("sync") ? [
     menuRow("folder", "Theta Vault フォルダ", esc(state.vaultPath || "未設定") + (state.vaultWarnings?.length ? ` ・ ⚠ 読み込めないノート ${state.vaultWarnings.length}件` : ""), "call('chooseVault')", state.vaultWarnings?.length ? "attnrow" : ""),
   ] : [
-    !can("google") ? "" : menuRow("user", "Googleアカウント", state.googleClientId ? (state.googleSignedIn ? "ログイン中" + (state.contactAccount ? "：" + esc(state.contactAccount) : "") : "未ログイン") : "未設定（同期・連絡先に必要）", "googleSheet()", state.googleClientId ? "" : "attnrow"),
+    menuRow("help", "Google連携の初期設定ガイド", state.platform === "web" ? "ドライブ・連絡先の連携の前に1回だけ" : "ドライブ連携の前に1回だけ（Google Cloudへの登録）", "setupGuide('', 'sync')"),
+    state.platform !== "web" ? "" : menuRow("user", "Googleアカウント", state.googleClientId ? (state.googleSignedIn ? "ログイン中" + (state.contactAccount ? "：" + esc(state.contactAccount) : "") : "未ログイン") : "未設定（同期・連絡先に必要）", "googleSheet()", state.googleClientId ? "" : "attnrow"),
     state.syncEnabled
       ? menuRow("rotate", "今すぐ同期", state.syncError ? "⚠ " + esc(state.syncError) : state.lastSync ? "Theta Vault ・ 最終同期 " + esc(date(state.lastSync)) : "まだ同期していません", "call('syncNow')", state.syncError ? "attnrow" : "")
       : menuRow("cloud", "Google Driveで同期を始める", "Theta Vault（Obsidian形式）でスマホ・PCと共有", "syncStart()"),
@@ -1405,6 +1453,7 @@ window.onNative = ({ type, data }) => {
   }
   else if (type === "review") pendingEdit = data;
   else if (type === "driveFolders") driveSheet(data);
+  else if (type === "driveSetup") setupGuide(data.reason || "");
   else if (type === "contactCandidates") contactCandidateSheet(data);
   else if (type === "calendars") calendarSheet(data);
   else if (type === "queued") {

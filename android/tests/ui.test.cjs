@@ -478,6 +478,28 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: /まとめて実行/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "upgradeAll" });
+  // Google Cloud setup guide: opened first when Drive was never authorized; copy / open buttons.
+  await page.evaluate((d) => { onNative({ type: "state", data: { ...d, driveAuthorized: false, appPackage: "jp.yaegaki.meishiclaude", appSha1: "A1:13:EA" } }); go("menu"); }, demo);
+  assert.equal(await page.getByText("Googleアカウント", { exact: true }).count(), 0, "the web-only row stays off Android");
+  await page.evaluate(() => syncStart());
+  await page.getByRole("heading", { name: /Google連携の初期設定/ }).waitFor();
+  assert(await page.getByText("jp.yaegaki.meishiclaude").isVisible());
+  await page.getByRole("button", { name: "コピー" }).nth(1).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "copyText", text: "A1:13:EA" });
+  await page.getByRole("button", { name: /開く/ }).nth(1).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "openUrl", url: "https://console.cloud.google.com/apis/library/drive.googleapis.com" });
+  await page.locator(".stepcheck input").first().check();
+  assert(await page.getByText("1/5 完了").isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "20-setup-guide.png"), fullPage: true });
+  await page.getByRole("button", { name: /接続を試す/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "syncNow" });
+  // The silent cancel after the account picker opens the guide with the reason.
+  await page.evaluate(() => onNative({ type: "driveSetup", data: { reason: "Googleの許可が完了しませんでした（Googleのコード 10）" } }));
+  assert(await page.getByText("Googleのコード 10").isVisible());
+  await page.evaluate(() => closeModal());
   await page.evaluate(() => go("home"));
   // A newer release: banner on the home screen.
   await page.evaluate((d) => onNative({ type: "state", data: { ...d, version: "0.14.0", update: { version: "0.15.0", url: "https://github.com/x.apk", ready: false } } }), demo);

@@ -356,6 +356,9 @@ public class MainActivity extends Activity {
           .put("contactPhoto", prefs().getString("contactPhoto", "card"))
           .put("driveFolderName", prefs().getString("driveFolderName", ""))
           .put("autoContact", prefs().getBoolean("autoContact", true))
+          .put("appPackage", getPackageName())
+          .put("appSha1", signingSha1())
+          .put("driveAuthorized", prefs().getBoolean("driveAuthorized", false))
           .put("widgets", AppWidgetManager.getInstance(this).getAppWidgetIds(new ComponentName(this, RecentWidget.class)).length)
           .put("syncEnabled", prefs().getBoolean("syncEnabled", false))
           .put("autoCalendar", prefs().getBoolean("autoCalendar", false))
@@ -524,7 +527,13 @@ public class MainActivity extends Activity {
                 }
               } else runToken(work, r.getAccessToken());
             })
-        .addOnFailureListener(e -> event("error", driveSetupHelp(e)));
+        .addOnFailureListener(
+            e -> {
+              try {
+                event("driveSetup", new JSONObject().put("reason", "Google Driveに接続できませんでした：" + e.getMessage()));
+              } catch (Exception ignored) {
+              }
+            });
   }
 
   void runToken(TokenWork work, String token) {
@@ -532,10 +541,28 @@ public class MainActivity extends Activity {
       event("error", "Google Driveの許可を取得できませんでした。もう一度お試しください。");
       return;
     }
+    // Google access works: the setup guide is no longer offered first.
+    prefs().edit().putBoolean("driveAuthorized", true).apply();
     try {
       work.run(token);
     } catch (Exception e) {
       error(e);
+    }
+  }
+
+  // This build's signing certificate (what the Android OAuth client in Google Cloud must name).
+  String signingSha1() {
+    try {
+      android.content.pm.Signature[] sig =
+          Build.VERSION.SDK_INT >= 28
+              ? getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES).signingInfo.getApkContentsSigners()
+              : getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_SIGNATURES).signatures;
+      byte[] d = java.security.MessageDigest.getInstance("SHA-1").digest(sig[0].toByteArray());
+      StringBuilder b = new StringBuilder();
+      for (byte x : d) b.append(b.length() == 0 ? "" : ":").append(String.format("%02X", x));
+      return b.toString();
+    } catch (Exception e) {
+      return "";
     }
   }
 
@@ -545,16 +572,6 @@ public class MainActivity extends Activity {
       return;
     }
     withDriveToken(token -> task(title, () -> work.run(new Drive(token))));
-  }
-
-  // Account picked, then nothing: almost always the Google Cloud side (DRIVE_SETUP.md).
-  static String driveNotGranted(String code) {
-    return "Google Driveの許可が完了しませんでした" + code + "。\n\n"
-        + "自分で閉じた場合は、もう一度お試しください。アカウントを選んだだけで戻ってしまう場合は、Google Cloudの設定を確認してください（docs/DRIVE_SETUP.md）：\n"
-        + "1. 「クライアント」に Android のOAuthクライアントがあり、パッケージ名が jp.yaegaki.meishiclaude、SHA-1が A1:13:EA:34:83:60:56:32:E7:F5:94:4E:4E:8C:20:55:DD:AE:28:BA\n"
-        + "2. 「対象」→「テストユーザー」に、選んだGoogleアカウントが入っている\n"
-        + "3. 「ライブラリ」で Google Drive API が有効\n"
-        + "4. 作ったばかりなら、反映まで数分〜数十分待つ";
   }
 
   static String driveSetupHelp(Exception e) {
@@ -1319,6 +1336,13 @@ public class MainActivity extends Activity {
               });
           break;
         }
+      case "copyText":
+        {
+          ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+          cm.setPrimaryClip(ClipData.newPlainText("Theta Meishi Hatch", q.optString("text")));
+          if (Build.VERSION.SDK_INT < 33) event("toast", "コピーしました"); // Android 13+ shows its own
+          break;
+        }
       case "pinWidget":
         {
           AppWidgetManager m = AppWidgetManager.getInstance(this);
@@ -1748,7 +1772,10 @@ public class MainActivity extends Activity {
           code = "（Googleのコード " + e.getStatusCode() + "）";
         } catch (Exception ignored) {
         }
-        event("error", driveNotGranted(code));
+        try {
+          event("driveSetup", new JSONObject().put("reason", "Googleの許可が完了しませんでした" + code + "。自分で閉じたのでなければ、下の設定を確認してください。"));
+        } catch (JSONException ignored) {
+        }
         return;
       }
       if (work == null) {
