@@ -110,8 +110,10 @@ public final class Pipeline {
         if (next == null) next = p;
       }
       if (next == null) break;
-      String id = next.getString("id"), step = next.optString("queue");
-      tried.add(id + step);
+      // A queue can chain steps ("kana,logo" from the upgrade of old cards): first one now.
+      String id = next.getString("id"), queue = next.optString("queue");
+      String step = queue.split(",", 2)[0], rest = queue.contains(",") ? queue.substring(queue.indexOf(',') + 1) : "";
+      tried.add(id + queue);
       String label = next.optString("name").isEmpty() ? "名刺" : next.optString("name");
       try {
         if (step.equals("recognize")) {
@@ -200,6 +202,16 @@ public final class Pipeline {
           JSONObject p = s.person(id);
           p.remove("queue");
           s.put(p);
+        }
+        if (!rest.isEmpty()) {
+          try {
+            JSONObject p = s.person(id);
+            String q = p.optString("queue");
+            p.put("queue", q.isEmpty() ? rest : q + "," + rest);
+            s.put(p);
+          } catch (Exception gone) {
+            // the step itself removed the card (a New Year card filed under its sender)
+          }
         }
       } catch (Exception e) {
         String m = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();

@@ -627,6 +627,10 @@ function timeline(p) {
 function menuRow(ic, label, sub, onclick, cls = "") {
   return `<button class="mrow ${cls}" onclick="${onclick}"><span class="mi">${icon(ic)}</span><span class="mt"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span>${icon("next")}</button>`;
 }
+// The same look, for information only (not tappable).
+function noteRow(ic, label, sub) {
+  return `<div class="mrow"><span class="mi">${icon(ic)}</span><span class="mt"><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</span></div>`;
+}
 function detailMenu() {
   const p = getPerson();
   modal(
@@ -1212,6 +1216,22 @@ function googleSheet() {
     }<p class="caption gap">ログインは約1時間で切れます。切れたらホーム画面の「Googleにログイン」を押してください（iPhoneでは、押したときにしかログイン画面を開けないため）。</p>`,
   );
 }
+// Old cards brought up to date in one go (logos, readings): what it does and roughly what it costs.
+const upgradeCount = () => (state.upgradeLogos || 0) + (state.kanaMissing || 0);
+function upgradeSummary() {
+  return [state.upgradeLogos ? `ロゴの無い会社 ${state.upgradeLogos}社` : "", state.kanaMissing ? `読み仮名が空 ${state.kanaMissing}件` : ""].filter(Boolean).join("・");
+}
+function upgradeSheet() {
+  const logos = state.upgradeLogos || 0, kana = state.kanaMissing || 0;
+  // Gemini 2.5 Flash: an image call well under 0.5 yen, a text-only call far less.
+  const yen = Math.max(1, Math.ceil(logos * 0.5 + kana * 0.05));
+  modal(
+    `<h2>${icon("spark")} 過去の名刺を最新の状態に</h2><p class="caption">新しい版で増えた機能を、これまでに登録した名刺にもまとめて当てはめます。バックグラウンドで進むので、そのまま使っていて大丈夫です。</p><div class="mlist">${[
+      logos ? noteRow("card", `会社ロゴ ${logos}社`, state.platform === "web" ? "名刺の画像からロゴを切り出します。同じ会社の人にも付きます" : "名刺の画像からロゴを切り出し、無ければ会社のウェブサイトから取得。同じ会社の人にも付きます") : "",
+      kana ? noteRow("user", `読み仮名 ${kana}件`, "読み取った全文（ローマ字表記など）から読みを補い、Google連絡先にも反映") : "",
+    ].join("")}</div><p class="caption gap">Geminiの費用の目安：合計 約${yen}円以下。手で選んだロゴや入力済みの読み仮名は変えません。</p><button class="primary full gap" onclick="closeModal();call('upgradeAll')">${icon("spark")}まとめて実行</button>`,
+  );
+}
 function syncStart() {
   if (
     confirm(
@@ -1249,7 +1269,7 @@ function menuPage() {
     menuRow("card", "ホーム画面にウィジェットを追加", state.widgets ? `設置済み（${state.widgets}個）・ 最近登録した名刺・開いた名刺` : "最近登録した名刺・開いた名刺を表示", "call('pinWidget')"),
   ]))}${section("読み取り", [
     menuRow("spark", "未認識をまとめて読み取る", unread ? unread + "件の名刺が未認識" : "未認識の名刺はありません", "batchRecognize()"),
-    state.kanaMissing ? menuRow("spark", "読み仮名を補う", `読み仮名が空の名刺 ${state.kanaMissing}件（読み取った全文から・画像は送りません）`, "if(confirm('読み取り済みの全文（ローマ字表記など）から読み仮名を補い、Google連絡先にも反映します。続けますか？'))call('kanaFill')") : "",
+    upgradeCount() ? menuRow("spark", "過去の名刺を最新の状態にする", upgradeSummary(), "upgradeSheet()", "attnrow") : "",
   ])}${section("同期", !can("sync") ? [
     menuRow("folder", "Theta Vault フォルダ", esc(state.vaultPath || "未設定") + (state.vaultWarnings?.length ? ` ・ ⚠ 読み込めないノート ${state.vaultWarnings.length}件` : ""), "call('chooseVault')", state.vaultWarnings?.length ? "attnrow" : ""),
   ] : [

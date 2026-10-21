@@ -1,5 +1,9 @@
 # 開発引き継ぎ
 
+## 0.15.1での変更（過去データの更新を1つに）
+
+- メニュー「過去の名刺を最新の状態にする」（`upgradeAll`）：ロゴの無い会社（`Logo.pick` / `model.logoPicks`）と読み仮名が空の名刺（`needsKana`）をまとめてキューへ。Androidのキューは連結できる（`"kana,logo"`：先頭の工程を処理し、残りを次に回す。読み仮名の後に連絡先更新が入れば `"contact,logo"`）。件数は `state.upgradeLogos` / `kanaMissing`、費用の目安はロゴ0.5円・読み0.05円で計算。デスクトップ・Webはロゴだけ（Webは名刺からの切り出しのみ）。
+
 ## 0.15.0での変更（ロゴの自動化・Web版・Androidの自動更新）
 
 - Androidの自動更新：`UpdateCheck` が新しい版を見つけるとWi-FiならAPKを `files/updates/` へダウンロード（`UpdateInstaller.download`、Releaseのdigestで検証、URLはこのリポジトリのReleaseに限定）。お知らせを押すと `PackageInstaller` でインストール（未許可なら「不明なアプリ」の設定画面へ）。`setRequireUserAction(NOT_REQUIRED)` と `UPDATE_PACKAGES_WITHOUT_USER_ACTION` で、Android 12以降・自分がインストール元のときは `onStop`（画面を離れた時、録音中・処理中でなければ）に確認なしで入れる。失敗理由は `updateError` としてお知らせに出す。

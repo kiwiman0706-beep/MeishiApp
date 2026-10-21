@@ -342,6 +342,7 @@ public class MainActivity extends Activity {
       JSONArray everyone = state.getJSONArray("people");
       for (int i = 0; i < everyone.length(); i++) if (needsKana(everyone.getJSONObject(i))) kana++;
       state.put("kanaMissing", kana);
+      state.put("upgradeLogos", Logo.pick(store).size());
       state.put("version", versionName());
       JSONObject update = UpdateCheck.pending(this, versionName());
       if (update != null) state.put("update", update);
@@ -1238,6 +1239,30 @@ public class MainActivity extends Activity {
               event("review", id);
             });
         break;
+      case "upgradeAll":
+        {
+          // Old cards brought up to date in one go: company logos (from the card, else the
+          // company's site) and readings for Google Contacts. Chained per card ("kana,logo").
+          if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+          Map<String, List<String>> steps = new LinkedHashMap<>();
+          JSONArray a = store.snapshot().getJSONArray("people");
+          for (int i = 0; i < a.length(); i++)
+            if (needsKana(a.getJSONObject(i))) steps.computeIfAbsent(a.getJSONObject(i).getString("id"), k -> new ArrayList<>()).add("kana");
+          for (String pid : Logo.pick(store)) steps.computeIfAbsent(pid, k -> new ArrayList<>()).add("logo");
+          if (steps.isEmpty()) {
+            event("toast", "すべて最新の状態です");
+            break;
+          }
+          for (Map.Entry<String, List<String>> e : steps.entrySet()) {
+            JSONObject p = store.person(e.getKey());
+            p.put("queue", String.join(",", e.getValue())).remove("queueError");
+            store.put(p);
+          }
+          refresh();
+          startProcessing();
+          event("toast", steps.size() + "件の名刺を最新の状態にします（バックグラウンド）");
+          break;
+        }
       case "kanaFill":
         {
           // Readings for cards already read (text only, no image: very cheap).

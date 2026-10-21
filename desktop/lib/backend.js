@@ -61,6 +61,7 @@ class Backend {
       vaultWarnings: this.store.warnings,
       processing: this.processing,
       lastReport: s.get("lastReport", ""),
+      upgradeLogos: model.logoPicks(this.store.people()).length,
       ...this.info(), // app version and a pending update (main.js)
     };
   }
@@ -146,6 +147,7 @@ class Backend {
         if ((q.contacts || []).length) this.event("report", "Google連絡先の重複はスマホ版で統合してください。");
         return this.toast(done + "件を統合しました");
       }
+      case "upgradeAll": // old cards brought up to date: on the desktop, the company logos
       case "logoAll":
       case "logoOne": {
         this.needKey();

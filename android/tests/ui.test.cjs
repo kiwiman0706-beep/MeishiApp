@@ -469,10 +469,15 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: /ホーム画面にウィジェットを追加/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "pinWidget" });
-  assert(await page.getByText("読み仮名が空の名刺 3件", { exact: false }).isVisible());
-  await page.getByRole("button", { name: /読み仮名を補う/ }).click();
+  // Old cards: one place for everything new versions add (logos, readings).
+  await page.evaluate((d) => onNative({ type: "state", data: { ...d, kanaMissing: 3, upgradeLogos: 5, widgets: 0 } }), demo);
+  assert(await page.getByText("ロゴの無い会社 5社・読み仮名が空 3件").isVisible());
+  await page.getByRole("button", { name: /過去の名刺を最新の状態にする/ }).click();
+  assert(await page.getByText("約3円以下", { exact: false }).isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "19-upgrade.png") });
+  await page.getByRole("button", { name: /まとめて実行/ }).click();
   calls = await page.evaluate(() => window.calls);
-  assert.deepEqual(calls.at(-1), { action: "kanaFill" });
+  assert.deepEqual(calls.at(-1), { action: "upgradeAll" });
   await page.evaluate(() => go("home"));
   // A newer release: banner on the home screen.
   await page.evaluate((d) => onNative({ type: "state", data: { ...d, version: "0.14.0", update: { version: "0.15.0", url: "https://github.com/x.apk", ready: false } } }), demo);
