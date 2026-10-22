@@ -110,7 +110,7 @@ test("recognition keeps the card's logo; without one the website's; a card logo 
   await backend.importFiles([file("b.jpg", "cardB")], {});
   await settle();
   const b = store.people().find((p) => p.name === "B");
-  assert.strictEqual(b.logoSource, "card");
+  assert.strictEqual(b.logoSource, "card2");
   assert.strictEqual(String(await store.readMedia(b.logo)), "cut-cardB");
   assert.strictEqual(store.person(a.id).logo, b.logo);
 
@@ -124,6 +124,6 @@ test("recognition keeps the card's logo; without one the website's; a card logo 
   await settle();
   assert.strictEqual(store.person(a.id).logo, "hand.jpg");
   const again = new VaultStore(store.root, path.join(dir, "overlay.json")).load();
-  assert.strictEqual(again.person(b.id).logoSource, "card");
+  assert.strictEqual(again.person(b.id).logoSource, "card2");
   assert.strictEqual(again.person(a.id).logoSource, undefined);
 });

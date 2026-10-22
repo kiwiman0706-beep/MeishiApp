@@ -62,6 +62,7 @@ class Backend {
       processing: this.processing,
       lastReport: s.get("lastReport", ""),
       upgradeLogos: model.logoPicks(this.store.people()).length,
+      upgradeRecut: model.recutPicks(this.store.people()).length,
       ...this.info(), // app version and a pending update (main.js)
     };
   }
@@ -152,9 +153,12 @@ class Backend {
       case "logoOne": {
         this.needKey();
         const ids = action === "logoOne" ? [id] : model.logoPicks(st.people());
-        if (!ids.length) return this.toast("ロゴを探す会社はありません（ロゴのある会社・試した会社は除きます）");
+        // The upgrade also cuts again the logos cut before the corrected method.
+        const again = action === "upgradeAll" ? model.recutPicks(st.people()).filter((x) => !ids.includes(x)) : [];
+        if (!ids.length && !again.length) return this.toast("ロゴを探す会社はありません（ロゴのある会社・試した会社は除きます）");
         this.enqueue(ids, action === "logoOne" ? "relogo" : "logo");
-        return this.toast(ids.length + "社のロゴを名刺から探します（バックグラウンド）");
+        if (again.length) this.enqueue(again, "relogo");
+        return this.toast(ids.length + again.length + "社のロゴを名刺から探します（バックグラウンド）");
       }
       case "notDuplicate": {
         for (const [a, b] of [[id, q.other], [q.other, id]]) {
@@ -477,8 +481,8 @@ class Backend {
     const st = this.store, im = this.svc.imaging;
     if (box && (p.pages || []).length) {
       front = front || (await im.toJpeg(await st.readMedia(p.pages[0].file), 1600));
-      const jpeg = await im.crop(front, (w, h) => model.logoRect(box, w, h), 512);
-      if (jpeg) return this.shareLogo(p, jpeg, ".jpg", old, "card");
+      const jpeg = await im.crop(front, (w, h) => model.logoRect(box, w, h), 512, model.refineLogoRect);
+      if (jpeg) return this.shareLogo(p, jpeg, ".jpg", old, model.CUT);
     }
     const key = model.companyKey(p);
     if (!this.webLogos) return false;
@@ -502,7 +506,7 @@ class Backend {
     const key = model.companyKey(p);
     for (const x of st.people()) {
       const same = x.id === p.id || (key && model.companyKey(x) === key);
-      const free = !x.logo || (old && x.logo === old) || (origin === "card" && String(x.logoSource || "").startsWith("web:"));
+      const free = !x.logo || (old && x.logo === old) || (origin.startsWith("card") && String(x.logoSource || "").startsWith("web:"));
       if (!same || !free || x.kind === model.INBOX) continue;
       const y = st.person(x.id);
       y.logo = name;

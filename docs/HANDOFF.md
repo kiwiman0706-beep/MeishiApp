@@ -1,5 +1,10 @@
 # 開発引き継ぎ
 
+## 0.15.4での変更（ロゴの切り出しの補正）
+
+- Geminiのロゴ枠を画像で補正（`Logo.refine` / `model.refineLogoRect`、同じ処理）：枠の周り（枠と同じ大きさ、最低でも名刺の8%）を探索範囲とし、その境界で最も多い色を背景とみなす。背景と色差が大きい画素を「インク」として、各辺の外側にインクが続く間は広げ、余白を詰め、最後に6%＋2pxの余白。背景の隙間で止まるので隣の文字は入らない。画素が無ければGeminiの枠のまま。`imaging.crop(bytes, rectOf, max, refine)`（デスクトップは `nativeImage.toBitmap`、Webはcanvas）。
+- 補正後の切り出しは `logoSource: "card2"`、以前のものは `"card"`。「過去の名刺を最新の状態にする」で `card` の会社を `relogo`（`Logo.recut` / `model.recutPicks`）。`card*` はサイトのロゴ（`web:`）を置き換える。プロンプトに「名刺の会社のロゴを選ぶ・普通の文字の社名は囲まない・全体を囲む」。
+
 ## 0.15.1での変更（過去データの更新を1つに）
 
 - メニュー「過去の名刺を最新の状態にする」（`upgradeAll`）：ロゴの無い会社（`Logo.pick` / `model.logoPicks`）と読み仮名が空の名刺（`needsKana`）をまとめてキューへ。Androidのキューは連結できる（`"kana,logo"`：先頭の工程を処理し、残りを次に回す。読み仮名の後に連絡先更新が入れば `"contact,logo"`）。件数は `state.upgradeLogos` / `kanaMissing`、費用の目安はロゴ0.5円・読み0.05円で計算。デスクトップ・Webはロゴだけ（Webは名刺からの切り出しのみ）。

@@ -128,10 +128,18 @@ function imaging(base) {
       return img.toPNG();
     },
     // rectOf(width, height) → { x, y, width, height } or null; the cut-out is downscaled to max.
-    crop: async (buf, rectOf, max) => {
+    // refine(px, w, h, rect): corrects the rectangle with the picture's pixels.
+    crop: async (buf, rectOf, max, refine) => {
       const img = nativeImage.createFromBuffer(buf);
       const { width, height } = img.getSize();
-      const r = rectOf(width, height);
+      let r = rectOf(width, height);
+      if (r && refine) {
+        const bgra = img.toBitmap();
+        r = refine((x, y) => {
+          const i = (y * width + x) * 4;
+          return [bgra[i + 2], bgra[i + 1], bgra[i]];
+        }, width, height, r);
+      }
       if (!r || r.width < 8 || r.height < 8) return null;
       let out = img.crop(r);
       const s = Math.min(1, max / Math.max(r.width, r.height));

@@ -343,6 +343,7 @@ public class MainActivity extends Activity {
       for (int i = 0; i < everyone.length(); i++) if (needsKana(everyone.getJSONObject(i))) kana++;
       state.put("kanaMissing", kana);
       state.put("upgradeLogos", Logo.pick(store).size());
+      state.put("upgradeRecut", Logo.recut(store).size());
       state.put("version", versionName());
       JSONObject update = UpdateCheck.pending(this, versionName());
       if (update != null) state.put("update", update);
@@ -1276,6 +1277,8 @@ public class MainActivity extends Activity {
           for (int i = 0; i < a.length(); i++)
             if (needsKana(a.getJSONObject(i))) steps.computeIfAbsent(a.getJSONObject(i).getString("id"), k -> new ArrayList<>()).add("kana");
           for (String pid : Logo.pick(store)) steps.computeIfAbsent(pid, k -> new ArrayList<>()).add("logo");
+          // Logos cut before the corrected method: cut again (replacing them for the company).
+          for (String pid : Logo.recut(store)) steps.computeIfAbsent(pid, k -> new ArrayList<>()).add("relogo");
           if (steps.isEmpty()) {
             event("toast", "すべて最新の状態です");
             break;

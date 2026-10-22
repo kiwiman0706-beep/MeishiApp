@@ -72,7 +72,7 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/ja
   await page.waitForFunction(() => state.people[0]?.logo, null, { timeout: 10000 });
   const p = await page.evaluate(() => state.people[0]);
   assert.strictEqual(p.company, "株式会社テスト");
-  assert.ok(p.logo && p.logoSource === "card", "logo cut at recognition");
+  assert.ok(p.logo && p.logoSource === "card2", "logo cut at recognition");
   assert.strictEqual(await page.evaluate(() => state.platform), "web");
 
   // Company view with the logo picture.

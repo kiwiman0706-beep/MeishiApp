@@ -175,6 +175,85 @@ function logoRect(text, w, h) {
   return { x, y, width: Math.floor((r * w) / 1000) - x, height: Math.floor((b * h) / 1000) - y };
 }
 
+// Gemini's box is often a little off (a logo cut at one edge, extra margin). Corrected with the
+// image itself (Logo.java has the same): px(x, y) → [r, g, b]. The background is the colour most
+// common on the border of a search window around the box; "ink" is anything clearly different.
+// Each side grows while ink touches it (the logo continues), then empty margin is trimmed and an
+// even margin added. Gaps of background stop the growth, so neighbouring text stays out.
+function refineLogoRect(px, w, h, r) {
+  if (!r) return r;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // How far it may grow: the box's own size on each side (at least 8% of the card).
+  const mx = Math.max(r.width, w * 0.08), my = Math.max(r.height, h * 0.08);
+  const win = {
+    x0: clamp(Math.floor(r.x - mx), 0, w - 1),
+    y0: clamp(Math.floor(r.y - my), 0, h - 1),
+    x1: clamp(Math.ceil(r.x + r.width + mx), 1, w),
+    y1: clamp(Math.ceil(r.y + r.height + my), 1, h),
+  };
+  // Background: the most common (quantised) colour on the window's border.
+  const counts = new Map();
+  const sample = (x, y) => {
+    const c = px(x, y);
+    const k = (c[0] >> 4) * 256 + (c[1] >> 4) * 16 + (c[2] >> 4);
+    counts.set(k, (counts.get(k) || 0) + 1);
+  };
+  for (let x = win.x0; x < win.x1; x += 2) (sample(x, win.y0), sample(x, win.y1 - 1));
+  for (let y = win.y0; y < win.y1; y += 2) (sample(win.x0, y), sample(win.x1 - 1, y));
+  const top = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  const bg = [((top >> 8) & 15) * 16 + 8, ((top >> 4) & 15) * 16 + 8, (top & 15) * 16 + 8];
+  const ink = (x, y) => {
+    const c = px(x, y);
+    return Math.abs(c[0] - bg[0]) + Math.abs(c[1] - bg[1]) + Math.abs(c[2] - bg[2]) > 90;
+  };
+  // Ink pixels in a strip (every other pixel along it).
+  const rowInk = (y, x0, x1) => {
+    let n = 0;
+    for (let x = x0; x < x1; x += 2) if (ink(x, y)) n++;
+    return n;
+  };
+  const colInk = (x, y0, y1) => {
+    let n = 0;
+    for (let y = y0; y < y1; y += 2) if (ink(x, y)) n++;
+    return n;
+  };
+  let x0 = Math.floor(r.x), y0 = Math.floor(r.y), x1 = Math.ceil(r.x + r.width), y1 = Math.ceil(r.y + r.height);
+  const step = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+  for (let i = 0; i < 400; i++) {
+    let grew = false;
+    if (y0 - step >= win.y0 && rowInk(y0 - step, x0, x1) >= 2) (y0 -= step), (grew = true);
+    if (y1 + step <= win.y1 && rowInk(y1 + step - 1, x0, x1) >= 2) (y1 += step), (grew = true);
+    if (x0 - step >= win.x0 && colInk(x0 - step, y0, y1) >= 2) (x0 -= step), (grew = true);
+    if (x1 + step <= win.x1 && colInk(x1 + step - 1, y0, y1) >= 2) (x1 += step), (grew = true);
+    if (!grew) break;
+  }
+  // Trim empty margins.
+  while (y0 < y1 - 4 && rowInk(y0, x0, x1) === 0) y0++;
+  while (y1 > y0 + 4 && rowInk(y1 - 1, x0, x1) === 0) y1--;
+  while (x0 < x1 - 4 && colInk(x0, y0, y1) === 0) x0++;
+  while (x1 > x0 + 4 && colInk(x1 - 1, y0, y1) === 0) x1--;
+  if (x1 - x0 < 8 || y1 - y0 < 8) return r; // nothing recognisable: keep Gemini's box
+  const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.06) + 2;
+  x0 = clamp(x0 - pad, 0, w);
+  y0 = clamp(y0 - pad, 0, h);
+  x1 = clamp(x1 + pad, 0, w);
+  y1 = clamp(y1 + pad, 0, h);
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+// Logos cut with the corrected method are "card2"; plain "card" ones (0.15.3 and earlier) are
+// offered again by the upgrade of old cards: one card per company.
+const CUT = "card2";
+function recutPicks(people) {
+  const best = new Map();
+  for (const p of people) {
+    const k = companyKey(p);
+    if (!k || p.logoSource !== "card" || !(p.pages || []).length || p.queue) continue;
+    if (!best.has(k) || p.created > best.get(k).created) best.set(k, p);
+  }
+  return [...best.values()].map((p) => p.id);
+}
+
 // One card per company without a logo: the newest with an image, not tried before.
 function logoPicks(people) {
   const best = new Map(), has = new Set();
@@ -233,6 +312,9 @@ function media(p) {
 }
 
 module.exports = {
+  refineLogoRect,
+  CUT,
+  recutPicks,
   syncMerge,
   media,
   companyKey,

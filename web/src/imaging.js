@@ -57,10 +57,20 @@ const imaging = {
       b.close();
     }
   },
-  async crop(bytes, rectOf, max) {
+  async crop(bytes, rectOf, max, refine) {
     const b = await bitmap(bytes);
     try {
-      const r = rectOf(b.width, b.height);
+      let r = rectOf(b.width, b.height);
+      if (r && refine) {
+        const c = canvas(b.width, b.height);
+        const g = c.getContext("2d", { willReadFrequently: true });
+        g.drawImage(b, 0, 0);
+        const d = g.getImageData(0, 0, b.width, b.height).data;
+        r = refine((x, y) => {
+          const i = (y * b.width + x) * 4;
+          return [d[i], d[i + 1], d[i + 2]];
+        }, b.width, b.height, r);
+      }
       if (!r || r.width < 8 || r.height < 8) return null;
       return await draw(b, r.x, r.y, r.width, r.height, max, "image/jpeg", 0.92);
     } finally {

@@ -287,7 +287,7 @@ function companyGroups(a) {
 }
 // "card" → cut from a card, "web:<domain>" → that company's website, none → picked by hand.
 function logoFrom(src) {
-  if (src === "card") return "名刺から切り出し";
+  if (String(src || "").startsWith("card")) return "名刺から切り出し";
   if (String(src || "").startsWith("web:")) return `${src.slice(4)} から取得`;
   return "手動で登録";
 }
@@ -1263,17 +1263,18 @@ function googleSheet() {
   );
 }
 // Old cards brought up to date in one go (logos, readings): what it does and roughly what it costs.
-const upgradeCount = () => (state.upgradeLogos || 0) + (state.kanaMissing || 0);
+const upgradeCount = () => (state.upgradeLogos || 0) + (state.upgradeRecut || 0) + (state.kanaMissing || 0);
 function upgradeSummary() {
-  return [state.upgradeLogos ? `ロゴの無い会社 ${state.upgradeLogos}社` : "", state.kanaMissing ? `読み仮名が空 ${state.kanaMissing}件` : ""].filter(Boolean).join("・");
+  return [state.upgradeLogos ? `ロゴの無い会社 ${state.upgradeLogos}社` : "", state.upgradeRecut ? `ロゴの切り直し ${state.upgradeRecut}社` : "", state.kanaMissing ? `読み仮名が空 ${state.kanaMissing}件` : ""].filter(Boolean).join("・");
 }
 function upgradeSheet() {
-  const logos = state.upgradeLogos || 0, kana = state.kanaMissing || 0;
+  const logos = state.upgradeLogos || 0, recut = state.upgradeRecut || 0, kana = state.kanaMissing || 0;
   // Gemini 2.5 Flash: an image call well under 0.5 yen, a text-only call far less.
-  const yen = Math.max(1, Math.ceil(logos * 0.5 + kana * 0.05));
+  const yen = Math.max(1, Math.ceil((logos + recut) * 0.5 + kana * 0.05));
   modal(
     `<h2>${icon("spark")} 過去の名刺を最新の状態に</h2><p class="caption">新しい版で増えた機能を、これまでに登録した名刺にもまとめて当てはめます。バックグラウンドで進むので、そのまま使っていて大丈夫です。</p><div class="mlist">${[
       logos ? noteRow("card", `会社ロゴ ${logos}社`, state.platform === "web" ? "名刺の画像からロゴを切り出します。同じ会社の人にも付きます" : "名刺の画像からロゴを切り出し、無ければ会社のウェブサイトから取得。同じ会社の人にも付きます") : "",
+      recut ? noteRow("card", `ロゴの切り直し ${recut}社`, "以前に名刺から切り出したロゴを、改良した方法（端が切れない）で切り出し直します") : "",
       kana ? noteRow("user", `読み仮名 ${kana}件`, "読み取った全文（ローマ字表記など）から読みを補い、Google連絡先にも反映") : "",
     ].join("")}</div><p class="caption gap">Geminiの費用の目安：合計 約${yen}円以下。手で選んだロゴや入力済みの読み仮名は変えません。</p><button class="primary full gap" onclick="closeModal();call('upgradeAll')">${icon("spark")}まとめて実行</button>`,
   );
