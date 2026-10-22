@@ -21,6 +21,9 @@
 | `UpdateCheck.java` `UpdateInstaller.java` | ✔ | GitHub Release を見て APK を取得・検証・アプリ内インストール（12以降は無確認） |
 | `RecentWidget.java` ＋ `res/layout/widget_*` `res/xml/recent_widget_info.xml` | △ | ホーム画面ウィジェット |
 | `VaultKey.java` | ✔ | APIキーを Android Keystore で暗号化 |
+| `SeriesSettings.java` | ✔ | シリーズの設定の規則（`THETA_SHARED_SETTINGS.md`。`desktop/lib/series.js` と同じ、`ME` を自分の名前に） |
+| `Series.java` | △ | 自分の設定 ⇄ シリーズ項目（`current`/`apply`/`USES`）、同期中の `.theta/settings.json` の読み書き |
+| `SeriesProvider.java` ＋ マニフェストの権限・`<queries>`・HATCH | ✔ | 同じ鍵のシリーズアプリ同士で Gemini キーを貸し借り（貸した側に通知） |
 | `Importer.java` `BulkImport.java` `FilesProvider.java` | △ | 画像・PDF・ZIP の取り込み、共有用 FileProvider |
 | `Logo.java` `WebLogo.java` `Company.java` `Nenga.java` `Geo.java` `Backup.java` | ✖ | 名刺専用（ロゴ、会社、年賀状、地図、CSV）。ロゴの画素補正（`Logo.refine`）は画像の切り出し一般に流用可 |
 | `test/…` | △ | Vault の往復、2台同期（Robolectric）、Java⇄JS の相互読み込み |
@@ -37,7 +40,8 @@
 | `main.js` | ✔ | トレイ常駐、Vaultの場所（Googleドライブ for desktop を自動検出）、APIキー（safeStorage）、PDF描画（隠しウィンドウの pdf.js）、自動更新、DeskHatch 用URL |
 | `lib/server.js` | ✔ | 127.0.0.1 の HTTP ブリッジ（トークン、Host 検査、SSE、ドロップ取り込み） |
 | `lib/vault-store.js` `lib/vault-codec.js` | ✔/△ | Vault フォルダが DB（読み込み・監視・原子的書き込み・ゴミ箱、端末だけの項目は overlay） |
-| `lib/backend.js` | △ | アクションの実装（`platform`/`caps` を受け取り Web 版と共有） |
+| `lib/backend.js` | △ | アクションの実装（`platform`/`caps` を受け取り Web 版と共有）。`series*` がシリーズ設定の配線 |
+| `lib/series.js` | ✔ | シリーズの設定の規則（Java版と同じテスト） |
 | `lib/model.js` `lib/importer.js` `lib/gemini.js` | △ | レコードの規則・取り込み・Gemini |
 | `lib/weblogo.js` | ✖ | 会社サイトのロゴ |
 | `scripts/sync-ui.js` | ✔ | 共通UIのコピーと、Java からプロンプトを抜き出す |

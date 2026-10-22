@@ -21,7 +21,7 @@ mkdir -p "$K/reference/android/res/layout" "$K/reference/android/res/xml" "$K/re
 cp "$A"/res/layout/widget_*.xml "$K/reference/android/res/layout/"
 cp "$A"/res/xml/*.xml "$K/reference/android/res/xml/"
 cp "$A"/res/drawable/*.xml "$K/reference/android/res/drawable/"
-cp android/app/src/test/java/jp/yaegaki/meishinote/{VaultCodecTest,VaultSyncTest,SyncTest,CrossPlatformTest,UpdateCheckTest}.java "$K/reference/android/test/"
+cp android/app/src/test/java/jp/yaegaki/meishinote/{VaultCodecTest,VaultSyncTest,SyncTest,CrossPlatformTest,UpdateCheckTest,SeriesSettingsTest}.java "$K/reference/android/test/"
 cp android/tests/ui.test.cjs "$K/reference/android/test/"
 cp "$A"/assets/{index.html,app.js,style.css} "$K/reference/ui/"
 
