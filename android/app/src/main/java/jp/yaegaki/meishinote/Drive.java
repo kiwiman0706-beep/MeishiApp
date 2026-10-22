@@ -371,6 +371,10 @@ public final class Drive {
         .getString("id");
   }
 
+  public void rename(String id, String name) throws Exception {
+    json("files/" + Uri.encode(id) + "?supportsAllDrives=true&fields=id", "PATCH", new JSONObject().put("name", name));
+  }
+
   public void move(String id, String from, String to) throws Exception {
     json(
         "files/"

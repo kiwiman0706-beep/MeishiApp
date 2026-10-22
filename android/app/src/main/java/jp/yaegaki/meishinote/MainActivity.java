@@ -749,6 +749,7 @@ public class MainActivity extends Activity {
           }
           refresh();
           event("saved", id);
+          if (p.has("driveFiles")) startProcessing(); // the Drive file follows the new name
           // Edits reach the Google contact this app created; unregistered people can opt in.
           if (Contacts.registered(this, p))
             permission(

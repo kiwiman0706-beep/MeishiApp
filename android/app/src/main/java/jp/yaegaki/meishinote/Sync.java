@@ -11,7 +11,8 @@ public final class Sync {
   // Device-specific fields: contact row ids differ per phone, queues are local work.
   static final String[] LOCAL = {
     "contactRawId", "contactAccount", "contactPhoto", "queue", "queueError",
-    "contactDuplicate", "suggestion", "contactUnlinked", "calendarEventId", "contactMerged", "logoTried", "kanaTried", "contactPending"
+    "contactDuplicate", "suggestion", "contactUnlinked", "calendarEventId", "contactMerged", "logoTried", "kanaTried", "contactPending",
+    "driveFiles" // the Drive folder files behind a card (renamed once it is read)
   };
   static final String DELETED = "deleted";
 

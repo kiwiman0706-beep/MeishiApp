@@ -1,5 +1,11 @@
 # 開発引き継ぎ
 
+## 0.18.1での変更（Driveから取り込んだファイルの名前）
+
+- Googleドライブのフォルダから取り込み「登録済み」へ移したファイルを、読み取り後に `名刺｜会社｜氏名.jpg`（お店は `お店｜店名`、1人に複数ファイルなら `（2）`）へ改名（`DriveRename`、`Drive.rename`）。
+- 取り込み時（移動できたファイルだけ）、名刺に `driveFiles: [{id, name}]`（端末だけの項目、`Sync.LOCAL`）を記録。対応は `sources[].name`（PDFのページは「名前 / 2」）で取る。
+- 改名は `ProcessingService.renameDrive`（処理の最後、`DriveAuth.silentToken`）。未読み取り・処理待ち・氏名も会社も空のときは待つ。名刺の保存（氏名の修正）でサービスを起こし、名前を付け直す。Driveで消されたファイル（404）は忘れる。Windowsで使えない文字・改行は空白に。
+
 ## 0.18.0での変更（名刺のQRコード・vCardで共有）
 
 - QRコード：読み取りの前に端末で解読（Android は ML Kit のバーコード読み取り（Play services、マニフェストの `com.google.mlkit.vision.DEPENDENCIES=barcode` で先に取得）、使えなければ ZXing。デスクトップ・Web は jsQR、`imaging.rgba`）。浮き出し・影のある印刷は ZXing では読めないことがあった（実物の名刺で確認）ため ML Kit を先にした。1600/1000/2400px で試す。

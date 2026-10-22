@@ -289,7 +289,10 @@ public final class Pipeline {
         for (int k = 0; k < r.getJSONArray("ids").length(); k++) ids.put(r.getJSONArray("ids").get(k));
         pages += r.optInt("pages");
         skipped += r.optInt("skipped");
-        if (e.length() == 0) moved += moveDone(d, f, folder, done, errors);
+        if (e.length() == 0 && moveDone(d, f, folder, done, errors) == 1) {
+          moved++;
+          DriveRename.tag(Store.get(c), r.getJSONArray("ids"), Collections.singletonList(f));
+        }
       }
       if (!perFile && errors.length() > 0)
         throw new IOException(
@@ -302,7 +305,10 @@ public final class Pipeline {
         JSONArray e = r.getJSONArray("errors");
         for (int k = 0; k < e.length(); k++) errors.put(e.get(k));
         // Importer aborts the whole pair batch on any bad file, so reaching here means all saved.
-        for (JSONObject f : metas) moved += moveDone(d, f, folder, done, errors);
+        List<JSONObject> movedFiles = new ArrayList<>();
+        for (JSONObject f : metas) if (moveDone(d, f, folder, done, errors) == 1) movedFiles.add(f);
+        moved += movedFiles.size();
+        DriveRename.tag(Store.get(c), ids, movedFiles);
       }
     } finally {
       for (File f : staged) f.delete();

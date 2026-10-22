@@ -118,6 +118,21 @@ public class ProcessingService extends Service {
     tell("");
   }
 
+  // Imported Drive files get the card's name once it is read (DriveRename).
+  void renameDrive(StringBuilder report) {
+    try {
+      if (!DriveRename.pending(Store.get(this))) return;
+      progress("Googleドライブのファイル名を変更中");
+      Drive drive = new Drive(DriveAuth.silentToken(this));
+      java.util.List<String> errors = new java.util.ArrayList<>();
+      DriveRename.run(Store.get(this), drive::rename, errors);
+      for (String e : errors) report.append(report.length() > 0 ? "\n" : "").append(e);
+      tell("");
+    } catch (Exception e) {
+      report.append(report.length() > 0 ? "\n" : "").append("Googleドライブのファイル名を変更できませんでした：").append(e.getMessage());
+    }
+  }
+
   void drive(String token, StringBuilder report) {
     try {
       JSONObject r = Pipeline.driveImport(this, new Drive(token), this::progress);
@@ -171,6 +186,7 @@ public class ProcessingService extends Service {
         if (s.halted) break;
       }
       extras(report);
+      renameDrive(report);
       if (syncRequested && getSharedPreferences("prefs", 0).getBoolean("syncEnabled", false)) sync(report);
     } catch (Exception e) {
       report.append("処理に失敗しました：").append(e.getMessage());
