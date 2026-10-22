@@ -1707,3 +1707,145 @@ button:disabled {
   border-radius: 8px;
   padding: 6px 8px;
 }
+
+/* ---- Handwritten notes ---- */
+.inkimg {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.inktext {
+  color: var(--muted);
+  font-size: 13px;
+}
+body.inking {
+  overflow: hidden;
+}
+.inkpad {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+.inkbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+}
+.inkbar .primary {
+  width: auto;
+  padding: 0 16px;
+}
+.inktools {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.inktools button {
+  flex: none;
+}
+.inktools .iconbtn.on,
+.inksize.on,
+.inkcolor.on {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.inkcolor {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--c);
+  padding: 0;
+  margin: 0 2px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.inksize {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.inksize i {
+  display: block;
+  border-radius: 50%;
+  background: var(--ink);
+}
+.inksep {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  margin: 0 4px;
+  flex: none;
+}
+.inkscroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0;
+}
+.inkscroll canvas {
+  display: block;
+  touch-action: none;
+  background-color: #fff;
+  background-image: repeating-linear-gradient(to bottom, transparent 0 35px, #e3e8f0 35px 36px);
+  cursor: crosshair;
+}
+.inkmore {
+  margin: 10px auto 16px;
+  display: flex;
+  width: auto;
+}
+.inkfoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 14px;
+  background: var(--white);
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.inkfoot label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inktools .inkcolor,
+.inktools .inksize {
+  min-height: 0;
+  min-width: 0;
+  flex: none;
+}
+.inkcolor {
+  width: 28px;
+  max-width: 28px;
+}
+.inkfoot input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  flex: none;
+  accent-color: var(--green);
+}
+.inkfoot label {
+  flex: none;
+}

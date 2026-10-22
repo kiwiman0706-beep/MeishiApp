@@ -317,6 +317,10 @@ public final class Store {
             for (int k = 0; k < fs.length(); k++)
               if (!fs.getJSONObject(k).optString("file").isEmpty()) files.add(fs.getJSONObject(k).getString("file"));
         }
+      // Handwritten notes.
+      JSONArray notesWithInk = p.optJSONArray("notes");
+      for (int j = 0; notesWithInk != null && j < notesWithInk.length(); j++)
+        if (!notesWithInk.getJSONObject(j).optString("ink").isEmpty()) files.add(notesWithInk.getJSONObject(j).getString("ink"));
     }
     return files;
   }

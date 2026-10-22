@@ -22,7 +22,9 @@ public class VaultCodecTest {
     p.put("sources", new JSONArray().put(new JSONObject().put("file", "a1.pdf").put("name", "scan.pdf").put("hash", "abc")));
     p.put("notes", new JSONArray()
         .put(new JSONObject().put("id", "note-1").put("time", 1709600400000L).put("text", "展示会でご挨拶"))
-        .put(new JSONObject().put("id", "note-2").put("time", 1709700000000L).put("text", "見積もり送付\n来週フォロー")));
+        .put(new JSONObject().put("id", "note-2").put("time", 1709700000000L).put("text", "見積もり送付\n来週フォロー"))
+        .put(new JSONObject().put("id", "note-3").put("time", 1709800000000L).put("text", "4/1 訪問\n資料持参").put("ink", "ink1.png"))
+        .put(new JSONObject().put("id", "note-4").put("time", 1709900000000L).put("text", "").put("ink", "ink2.png")));
     p.put("audio", new JSONArray().put(new JSONObject().put("file", "r1.m4a").put("time", 1709700000000L).put("seconds", 85).put("state", "saved")));
     p.put("greetings", new JSONArray().put(new JSONObject().put("id", "g1").put("year", 2027).put("dir", "received")
         .put("date", "2027-01-02").put("kind", "nenga").put("senders", "山田 太郎\n山田 花子")
@@ -49,8 +51,12 @@ public class VaultCodecTest {
     assertEquals(35.681, q.getJSONObject("geo").getDouble("lat"), 1e-9);
     assertEquals(2, q.getJSONArray("pages").length());
     assertEquals("a1.pdf", q.getJSONArray("sources").getJSONObject(0).getString("file"));
-    assertEquals(2, q.getJSONArray("notes").length());
+    assertEquals(4, q.getJSONArray("notes").length());
     assertEquals("note-2", q.getJSONArray("notes").getJSONObject(1).getString("id"));
+    assertEquals("ink1.png", q.getJSONArray("notes").getJSONObject(2).getString("ink"));
+    assertEquals("4/1 訪問\n資料持参", q.getJSONArray("notes").getJSONObject(2).getString("text"));
+    assertEquals("ink2.png", q.getJSONArray("notes").getJSONObject(3).getString("ink"));
+    assertEquals("", q.getJSONArray("notes").getJSONObject(3).getString("text"));
     assertEquals("見積もり送付\n来週フォロー", q.getJSONArray("notes").getJSONObject(1).getString("text"));
     assertEquals(85, q.getJSONArray("audio").getJSONObject(0).getInt("seconds"));
     JSONObject g = q.getJSONArray("greetings").getJSONObject(0);
@@ -81,7 +87,7 @@ public class VaultCodecTest {
     assertTrue(VaultCodec.editedOutside(md));
     assertFalse(VaultCodec.editedOutside(VaultCodec.render(sample())));
     assertEquals("山田 太一", q.getString("name"));
-    assertEquals(3, q.getJSONArray("notes").length());
+    assertEquals(5, q.getJSONArray("notes").length());
     assertTrue(q.getJSONObject("vaultExtra").has("aliases"));
     assertTrue(q.getString("vaultFree").contains("## 自分用"));
     String again = VaultCodec.render(q);

@@ -14,6 +14,7 @@ import android.provider.*;
 import android.view.*;
 import android.webkit.*;
 import android.widget.*;
+import android.util.Base64;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -119,7 +120,7 @@ public class MainActivity extends Activity {
                 return response(
                     name.endsWith(".m4a")
                         ? "audio/mp4"
-                        : name.endsWith(".pdf") ? "application/pdf" : "image/jpeg",
+                        : name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".png") ? "image/png" : "image/jpeg",
                     new FileInputStream(f));
               }
             } catch (Exception ignored) {
@@ -617,6 +618,32 @@ public class MainActivity extends Activity {
         });
   }
 
+  // Gemini writes out a handwritten note in the background; the picture stays the original.
+  void inkRead(String id, String noteId) {
+    event("toast", "手書きを文字にしています");
+    io.execute(
+        () -> {
+          try {
+            JSONObject p = store.person(id);
+            JSONArray a = p.getJSONArray("notes");
+            for (int i = 0; i < a.length(); i++) {
+              JSONObject n = a.getJSONObject(i);
+              if (!n.optString("id").equals(noteId) || n.optString("ink").isEmpty()) continue;
+              String text = new Gemini(this).ink(store.mediaFile(n.getString("ink")));
+              JSONObject now = store.person(id); // fresh: the user may have edited meanwhile
+              JSONArray b = now.getJSONArray("notes");
+              for (int j = 0; j < b.length(); j++)
+                if (b.getJSONObject(j).optString("id").equals(noteId)) b.getJSONObject(j).put("text", text);
+              store.put(now);
+              refresh();
+              event("toast", text.isEmpty() ? "文字は見つかりませんでした" : "手書きを文字にしました（検索できます）");
+            }
+          } catch (Exception e) {
+            error(e);
+          }
+        });
+  }
+
   void setPending(JSONObject p) {
     pending = p;
     getPreferences(0).edit().putString("pending", p.toString()).commit();
@@ -847,6 +874,34 @@ public class MainActivity extends Activity {
       case "note":
         store.note(id, q.getString("text"));
         refresh();
+        break;
+      case "inkNote":
+        {
+          // A handwritten note from the pen pad (PNG, base64): a new note, or a new picture for one.
+          byte[] png = Base64.decode(q.getString("png"), Base64.DEFAULT);
+          if (png.length < 8 || png[0] != (byte) 0x89 || png[1] != 'P') throw new IOException("手書きの画像が不正です");
+          String name = UUID.randomUUID() + ".png";
+          try (FileOutputStream o = new FileOutputStream(store.mediaFile(name))) {
+            o.write(png);
+          }
+          JSONObject p = store.person(id);
+          JSONArray a = p.getJSONArray("notes");
+          String noteId = q.optString("noteId");
+          JSONObject note = null;
+          for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optString("id").equals(noteId)) note = a.getJSONObject(i);
+          if (note == null) {
+            note = new JSONObject().put("id", UUID.randomUUID().toString()).put("time", System.currentTimeMillis()).put("text", "");
+            a.put(note);
+          }
+          note.put("ink", name);
+          store.put(p);
+          refresh();
+          if (q.optBoolean("read") && prefs().contains("key")) inkRead(id, note.getString("id"));
+          break;
+        }
+      case "inkRead":
+        if (!prefs().contains("key")) throw new IOException("先にGemini APIキーを設定してください");
+        inkRead(id, q.getString("noteId"));
         break;
       case "editNote":
         {

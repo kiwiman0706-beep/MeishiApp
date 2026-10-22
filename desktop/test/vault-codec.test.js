@@ -21,6 +21,8 @@ function sample() {
     notes: [
       { id: "note-1", time: 1709600400000, text: "展示会でご挨拶" },
       { id: "note-2", time: 1709700000000, text: "見積もり送付\n来週フォロー" },
+      { id: "note-3", time: 1709800000000, text: "4/1 訪問\n資料持参", ink: "ink1.png" },
+      { id: "note-4", time: 1709900000000, text: "", ink: "ink2.png" },
     ],
     audio: [{ file: "r1.m4a", time: 1709700000000, seconds: 85, state: "saved" }],
     greetings: [{ id: "g1", year: 2027, dir: "received", date: "2027-01-02", kind: "nenga", senders: "山田 太郎\n山田 花子", files: [{ file: "n1.jpg" }] }],
@@ -43,6 +45,7 @@ test("reads what Android writes", () => {
   assert.deepEqual(p.pages.map((x) => x.file), ["a1-0.jpg", "a1-1.jpg"]);
   assert.equal(p.notes[1].id, "note-2");
   assert.equal(p.notes[1].text, "見積もり送付\n来週フォロー");
+  assert.deepEqual(p.notes.slice(2).map((n) => [n.id, n.ink, n.text]), [["note-3", "ink1.png", "4/1 訪問\n資料持参"], ["note-4", "ink2.png", ""]]);
   assert.equal(p.greetings[0].senders, "山田 太郎\n山田 花子");
   assert.equal(p.audio[0].seconds, 85);
   assert.ok(!("contactRawId" in p) && !("queue" in p));

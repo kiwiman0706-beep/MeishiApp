@@ -308,6 +308,7 @@ function media(p) {
   for (const k of ["pages", "sources", "audio"])
     for (const o of p[k] || []) if (o.file && !(k === "audio" && o.state === "recording")) out.add(o.file);
   for (const g of p.greetings || []) for (const f of g.files || []) if (f.file) out.add(f.file);
+  for (const n of p.notes || []) if (n.ink) out.add(n.ink);
   return out;
 }
 

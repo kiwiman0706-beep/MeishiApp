@@ -30,6 +30,10 @@ const paths = {
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5 M12 16.8v.2",
   down: "M5 9l7 7 7-7",
   edit: "M4 16l12-12 4 4L8 20H4z M13 7l4 4",
+  pen: "M3 21c3-1 5-1 7-3l10-10a2.1 2.1 0 0 0-3-3L7 15c-2 2-2 4-4 6 M14 6l3 3",
+  eraser: "M8 20h12 M5 15l9-9 5 5-8 8H8z M10 10l5 5",
+  undo: "M9 14L4 9l5-5 M4 9h11a5 5 0 0 1 0 10h-3",
+  redo: "M15 14l5-5-5-5 M20 9H9a5 5 0 0 0 0 10h3",
   check: "M4 12l5 5L20 6",
   trash: "M3 6h18 M8 6V3h8v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7",
   rotate: "M20 8A8 8 0 1 0 20 16 M20 3v5h-5",
@@ -612,12 +616,17 @@ function detail() {
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。${contactDupButtons(p.id)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。${contactDupButtons(p.id)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? "" : `<button class="outline noflex" onclick="inkOpen()" aria-label="手書きメモ">${icon("pen")}手書き</button>`}${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
   const items = [
-    ...p.notes.map((n, i) => ({ t: n.time, html: `<div class="note"><div class="notehead"><small>${esc(date(n.time))}</small><div><button onclick="editNote(${i})" aria-label="メモ編集">${icon("edit")}</button><button onclick="removeItem('notes',${i})" aria-label="メモ削除">${icon("trash")}</button></div></div><p class="notebody">${esc(n.text)}</p></div>` })),
+    ...p.notes.map((n, i) => ({
+      t: n.time,
+      html: n.ink
+        ? `<div class="note"><div class="notehead"><small>${esc(date(n.time))} ・ 手書き</small><div><button onclick="inkOpen(${i})" aria-label="手書きに書き足す">${icon("pen")}</button>${n.text ? `<button onclick="editNote(${i})" aria-label="文字を直す">${icon("edit")}</button>` : ""}<button onclick="removeItem('notes',${i})" aria-label="メモ削除">${icon("trash")}</button></div></div><img class="inkimg" src="${img(n.ink)}" alt="手書きメモ" onclick="inkOpen(${i})">${n.text ? `<p class="notebody inktext">${esc(n.text)}</p>` : `<button class="link" onclick="inkRead('${esc(n.id)}')">${icon("spark")}文字にする（検索できるように）</button>`}</div>`
+        : `<div class="note"><div class="notehead"><small>${esc(date(n.time))}</small><div><button onclick="editNote(${i})" aria-label="メモ編集">${icon("edit")}</button><button onclick="removeItem('notes',${i})" aria-label="メモ削除">${icon("trash")}</button></div></div><p class="notebody">${esc(n.text)}</p></div>`,
+    })),
     ...p.audio.map((a, i) => ({ t: a.time, html: `<div class="note"><div class="notehead"><div><small>${esc(date(a.time))}</small><div>${icon("mic")} ${a.state === "recording" ? (state.recording === p.id ? "録音中" : "中断された録音") : `録音 ${Math.floor(a.seconds / 60)}分${a.seconds % 60}秒`}</div></div><div>${a.state !== "recording" || state.recording !== p.id ? `<button onclick="call('play',{id:selected,index:${i}})" aria-label="録音を再生">${icon("play")}</button>` : ""}<button onclick="removeItem('audio',${i})" aria-label="録音を削除">${icon("trash")}</button></div></div></div>` })),
   ];
   return items
@@ -780,6 +789,217 @@ function addNote() {
   });
   noteDraft = "";
   editNoteId = "";
+}
+// ---- Handwritten notes (S Pen, Windows pen, Apple Pencil; fingers / mouse too) ----------
+// A full-screen pad over the app. Pen pressure sets the line width; once a pen is seen, fingers
+// scroll instead of drawing (palm rejection). The pen's side button or eraser end erases.
+// Saved as a PNG on white (Obsidian shows it in the note); Gemini can write out the text.
+let ink = null;
+const INK_COLORS = ["#1d1d1f", "#1f4fbf", "#c0392b", "#17805f"];
+const INK_SIZES = [1.6, 2.8, 4.5];
+function inkPref(k, d) {
+  try {
+    const v = localStorage.getItem("ink." + k);
+    return v === null ? d : JSON.parse(v);
+  } catch {
+    return d;
+  }
+}
+function inkSetPref(k, v) {
+  try {
+    localStorage.setItem("ink." + k, JSON.stringify(v));
+  } catch {}
+}
+function inkOpen(index) {
+  const p = getPerson();
+  const n = index === undefined ? null : p.notes[index];
+  ink = {
+    id: p.id,
+    noteId: n ? n.id : "",
+    strokes: [],
+    redo: [],
+    color: inkPref("color", INK_COLORS[0]),
+    size: inkPref("size", INK_SIZES[1]),
+    eraser: false,
+    fingers: !inkPref("penSeen", false),
+    read: inkPref("read", true),
+    base: null,
+    height: 0,
+    active: new Map(),
+    dirty: false,
+  };
+  const el = document.createElement("div");
+  el.id = "inkpad";
+  el.className = "inkpad";
+  el.innerHTML = `<div class="inkbar"><button class="iconbtn" onclick="inkClose()" aria-label="閉じる">${icon("close")}</button><div class="inktools" id="inktools"></div><button class="primary noflex" onclick="inkSave()">${icon("check")}保存</button></div><div class="inkscroll" id="inkscroll"><canvas id="inkcanvas"></canvas><button class="outline inkmore" onclick="inkGrow()">${icon("plus")}下に書き足す</button></div><div class="inkfoot"><label><input type="checkbox" ${ink.read ? "checked" : ""} onchange="ink.read=this.checked;inkSetPref('read',this.checked)"> 保存後に文字にする（Gemini・検索できるように）</label><label><input type="checkbox" id="inkfingers" ${ink.fingers ? "checked" : ""} onchange="ink.fingers=this.checked"> 指でも書く</label></div>`;
+  document.body.appendChild(el);
+  document.body.classList.add("inking");
+  const c = $("inkcanvas");
+  ink.canvas = c;
+  ink.ctx = c.getContext("2d");
+  inkTools();
+  const start = (h) => {
+    inkSize(h);
+    c.addEventListener("pointerdown", inkDown);
+    c.addEventListener("pointermove", inkMove);
+    c.addEventListener("pointerup", inkUp);
+    c.addEventListener("pointercancel", inkUp);
+    c.addEventListener("contextmenu", (e) => e.preventDefault());
+  };
+  const w = $("inkscroll").clientWidth;
+  if (n && n.ink) {
+    const im = new Image();
+    im.onload = () => {
+      ink.base = im;
+      start(Math.max(Math.round((im.height * w) / im.width) + 240, w * 1.2));
+    };
+    im.onerror = () => start(w * 1.4);
+    im.src = img(n.ink);
+  } else start(Math.max(w * 1.4, innerHeight));
+}
+function inkTools() {
+  const t = $("inktools");
+  if (!t) return;
+  t.innerHTML =
+    INK_COLORS.map((c) => `<button class="inkcolor ${!ink.eraser && ink.color === c ? "on" : ""}" style="--c:${c}" onclick="ink.color='${c}';ink.eraser=false;inkSetPref('color','${c}');inkTools()" aria-label="ペンの色"></button>`).join("") +
+    `<span class="inksep"></span>` +
+    INK_SIZES.map((s, i) => `<button class="inksize ${ink.size === s ? "on" : ""}" onclick="ink.size=${s};inkSetPref('size',${s});inkTools()" aria-label="${["細", "中", "太"][i]}"><i style="width:${4 + i * 4}px;height:${4 + i * 4}px"></i></button>`).join("") +
+    `<span class="inksep"></span><button class="iconbtn ${ink.eraser ? "on" : ""}" onclick="ink.eraser=!ink.eraser;inkTools()" aria-label="消しゴム">${icon("eraser")}</button><button class="iconbtn" ${ink.strokes.length ? "" : "disabled"} onclick="inkUndo()" aria-label="元に戻す">${icon("undo")}</button><button class="iconbtn" ${ink.redo.length ? "" : "disabled"} onclick="inkRedo()" aria-label="やり直す">${icon("redo")}</button>`;
+}
+function inkSize(h) {
+  const c = ink.canvas,
+    w = $("inkscroll").clientWidth,
+    dpr = Math.min(devicePixelRatio || 1, 3);
+  ink.width = w;
+  ink.height = Math.round(h);
+  ink.dpr = dpr;
+  c.style.width = w + "px";
+  c.style.height = ink.height + "px";
+  c.width = Math.round(w * dpr);
+  c.height = Math.round(ink.height * dpr);
+  inkRedraw();
+}
+function inkGrow() {
+  inkSize(ink.height + Math.round(ink.width * 0.7));
+  $("inkscroll").scrollBy({ top: ink.width * 0.5, behavior: "smooth" });
+}
+function inkRedraw() {
+  const x = ink.ctx;
+  x.setTransform(ink.dpr, 0, 0, ink.dpr, 0, 0);
+  x.clearRect(0, 0, ink.width, ink.height);
+  if (ink.base) x.drawImage(ink.base, 0, 0, ink.width, (ink.base.height * ink.width) / ink.base.width);
+  for (const s of ink.strokes) for (let i = 0; i < s.pts.length; i++) inkSegment(s, i);
+}
+// One piece of a stroke: from the previous point to point i, its width from the pressure.
+function inkSegment(s, i) {
+  const x = ink.ctx,
+    a = s.pts[Math.max(0, i - 1)],
+    b = s.pts[i];
+  x.globalCompositeOperation = s.erase ? "destination-out" : "source-over";
+  x.strokeStyle = s.color;
+  x.lineCap = x.lineJoin = "round";
+  x.lineWidth = s.erase ? s.size * 7 : s.size * (0.35 + 1.1 * b[2]);
+  x.beginPath();
+  x.moveTo(a[0], a[1]);
+  x.lineTo(b[0] + (a === b ? 0.01 : 0), b[1]);
+  x.stroke();
+  x.globalCompositeOperation = "source-over";
+}
+function inkPoint(e) {
+  const r = ink.canvas.getBoundingClientRect();
+  // Pens report pressure; mice and fingers draw at an even middle width.
+  const p = e.pointerType === "pen" ? (e.pressure > 0 ? e.pressure : 0.5) : 0.5;
+  return [e.clientX - r.left, e.clientY - r.top, p];
+}
+function inkDown(e) {
+  if (e.pointerType === "pen" && !inkPref("penSeen", false)) {
+    inkSetPref("penSeen", true);
+    ink.fingers = false;
+    if ($("inkfingers")) $("inkfingers").checked = false;
+  }
+  if (e.pointerType === "touch" && !ink.fingers) {
+    // Palm and fingers scroll the page while a pen is in use.
+    ink.active.set(e.pointerId, { scroll: e.clientY });
+    return;
+  }
+  e.preventDefault();
+  try {
+    ink.canvas.setPointerCapture(e.pointerId);
+  } catch {}
+  // Side button (S Pen) or the eraser end (Windows pens) rubs out.
+  const erase = ink.eraser || (e.pointerType === "pen" && (!!(e.buttons & 2) || !!(e.buttons & 32) || e.button === 5));
+  const s = { color: ink.color, size: ink.size, erase, pts: [inkPoint(e)] };
+  ink.active.set(e.pointerId, { stroke: s });
+  ink.strokes.push(s);
+  ink.redo = [];
+  inkSegment(s, 0);
+}
+function inkMove(e) {
+  const a = ink.active.get(e.pointerId);
+  if (!a) return;
+  if (a.scroll !== undefined) {
+    $("inkscroll").scrollTop -= e.clientY - a.scroll;
+    a.scroll = e.clientY;
+    return;
+  }
+  e.preventDefault();
+  const all = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  for (const ev of all.length ? all : [e]) {
+    a.stroke.pts.push(inkPoint(ev));
+    inkSegment(a.stroke, a.stroke.pts.length - 1);
+  }
+}
+function inkUp(e) {
+  const a = ink.active.get(e.pointerId);
+  ink.active.delete(e.pointerId);
+  if (a && a.stroke) {
+    ink.dirty = true;
+    inkTools();
+  }
+}
+function inkUndo() {
+  if (!ink.strokes.length) return;
+  ink.redo.push(ink.strokes.pop());
+  inkRedraw();
+  inkTools();
+}
+function inkRedo() {
+  if (!ink.redo.length) return;
+  ink.strokes.push(ink.redo.pop());
+  inkRedraw();
+  inkTools();
+}
+function inkClose(force) {
+  if (!ink) return;
+  if (!force && ink.dirty && ink.strokes.length && !confirm("書いたメモを保存せずに閉じますか？")) return;
+  $("inkpad")?.remove();
+  document.body.classList.remove("inking");
+  ink = null;
+}
+// The written area only (down to the last line plus a margin), on white, at most 1600px wide.
+function inkSave() {
+  if (!ink.strokes.some((s) => !s.erase) && !ink.base) return inkClose(true);
+  let bottom = ink.base ? (ink.base.height * ink.width) / ink.base.width : 0;
+  for (const s of ink.strokes) if (!s.erase) for (const p of s.pts) bottom = Math.max(bottom, p[1] + s.size * 2);
+  const h = Math.min(ink.height, Math.ceil(bottom + 24));
+  const scale = Math.min(ink.dpr, 1600 / ink.width);
+  const out = document.createElement("canvas");
+  out.width = Math.round(ink.width * scale);
+  out.height = Math.round(h * scale);
+  const x = out.getContext("2d");
+  x.fillStyle = "#fff";
+  x.fillRect(0, 0, out.width, out.height);
+  x.drawImage(ink.canvas, 0, 0, ink.canvas.width, Math.round(h * ink.dpr), 0, 0, out.width, out.height);
+  const png = out.toDataURL("image/png").split(",")[1];
+  call("inkNote", { id: ink.id, noteId: ink.noteId, png, read: ink.read && !!state.keySet });
+  inkClose(true);
+}
+function inkRead(noteId) {
+  if (!state.keySet) {
+    report("メニュー → Gemini APIキー・モデル で、APIキーを登録してください。");
+    return;
+  }
+  call("inkRead", { id: selected, noteId });
 }
 function editNote(i) {
   const n = getPerson().notes[i];
@@ -1431,6 +1651,7 @@ function restoreConfirm() {
 
 // ---- Native bridge ------------------------------------------------------------
 window.handleBack = () => {
+  if (ink) return inkClose();
   if (!$("busy").hidden) {
     toast("処理が終わるまでお待ちください");
     return;

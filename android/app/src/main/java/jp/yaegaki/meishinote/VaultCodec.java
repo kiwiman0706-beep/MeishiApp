@@ -196,6 +196,8 @@ public final class VaultCodec {
     ns.sort(Comparator.comparingLong(n -> n.optLong("time")));
     for (JSONObject n : ns) {
       String[] lines = n.optString("text").split("\n", -1);
+      // A handwritten note: its picture first, then the text read from it (if any).
+      if (!n.optString("ink").isEmpty()) lines[0] = "![[" + path(n.getString("ink")) + "|480]]" + (lines[0].isEmpty() ? "" : " " + lines[0]);
       b.append("- ").append(noteTime(n.optLong("time"))).append(" ").append(lines[0]);
       for (int i = 1; i < lines.length; i++) b.append("\n  ").append(lines[i]);
       b.append(" ^").append(blockId(n.optString("id"))).append("\n");
@@ -349,6 +351,7 @@ public final class VaultCodec {
 
   static final Pattern NOTE = Pattern.compile("^[-*]\\s+(\\d{4}-\\d{2}-\\d{2})(?:[ T](\\d{1,2}:\\d{2}))?\\s*(.*)$");
   static final Pattern BLOCK = Pattern.compile("\\s\\^([A-Za-z0-9-]+)\\s*$");
+  static final Pattern INK = Pattern.compile("^!\\[\\[([^\\]|]*/_files/[^\\]|]+\\.png)(?:\\|[^\\]]*)?\\]\\]\\s*");
 
   public static JSONObject parse(String md) throws Exception {
     return parse(md, false);
@@ -534,6 +537,11 @@ public final class VaultCodec {
                   .put("id", bid != null ? bid : UUID.nameUUIDFromBytes((time + t).getBytes("UTF-8")).toString())
                   .put("time", time)
                   .put("text", t.trim());
+          Matcher im = INK.matcher(lastNote.getString("text"));
+          if (im.find() && local(im.group(1)) != null) {
+            lastNote.put("ink", local(im.group(1)));
+            lastNote.put("text", lastNote.getString("text").substring(im.end()).trim());
+          }
           notes.put(lastNote);
         } else if (lastNote != null && line.startsWith("  ")) {
           String t = line.substring(2);

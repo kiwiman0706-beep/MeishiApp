@@ -507,6 +507,48 @@ const p = (id, name, company, status = "confirmed") => ({
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "installUpdate" });
   await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  // Handwritten note: pen strokes with pressure, fingers scroll once a pen is seen, side button erases.
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); openPerson("demo-1"); }, demo);
+  await page.getByRole("button", { name: /手書き/ }).first().click();
+  await page.locator("#inkcanvas").waitFor();
+  const strokes = await page.evaluate(() => {
+    const c = document.getElementById("inkcanvas");
+    const r = c.getBoundingClientRect();
+    const fire = (type, x, y, o = {}) =>
+      c.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: o.id || 7, pointerType: o.type || "pen", clientX: r.left + x, clientY: r.top + y, pressure: o.p ?? 0.8, buttons: o.buttons ?? 1, button: 0 }));
+    const line = (x0, y0, x1, y1, o) => {
+      fire("pointerdown", x0, y0, o);
+      for (let i = 1; i <= 10; i++) fire("pointermove", x0 + ((x1 - x0) * i) / 10, y0 + ((y1 - y0) * i) / 10, o);
+      fire("pointerup", x1, y1, o);
+    };
+    line(30, 60, 250, 80, { p: 0.9 });
+    line(30, 120, 250, 140, { p: 0.2 });
+    line(30, 200, 250, 200, { type: "touch", id: 9 }); // a palm: not drawn
+    line(30, 120, 250, 140, { buttons: 3 }); // side button held: erases
+    return ink.strokes.map((s) => ({ erase: s.erase, pts: s.pts.length, p: s.pts[1][2] }));
+  });
+  assert.deepEqual(strokes.map((s) => s.erase), [false, false, true], "palm ignored, side button erases: " + JSON.stringify(strokes));
+  assert(Math.abs(strokes[0].p - 0.9) < 0.001 && Math.abs(strokes[1].p - 0.2) < 0.001, "pen pressure kept");
+  assert(await page.evaluate(() => !document.getElementById("inkfingers").checked), "fingers off after a pen");
+  await page.screenshot({ path: path.join(screenshotDir, "22-ink-pad.png") });
+  await page.getByRole("button", { name: "元に戻す" }).click();
+  assert.equal(await page.evaluate(() => ink.strokes.length), 2);
+  await page.getByRole("button", { name: /保存/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  const inkCall = calls.at(-1);
+  assert.equal(inkCall.action, "inkNote");
+  assert.equal(inkCall.id, "demo-1");
+  assert.equal(inkCall.read, true);
+  assert.equal(Buffer.from(inkCall.png, "base64").subarray(1, 4).toString(), "PNG");
+  assert.equal(await page.locator("#inkpad").count(), 0);
+  // Shown in the timeline with the text Gemini read; empty text offers to read it.
+  demo.people[0].notes = [...(demo.people[0].notes || []), { id: "ink-1", time: Date.now(), text: "", ink: "ink-1.png" }];
+  await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  await page.getByRole("button", { name: /文字にする/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "inkRead", id: "demo-1", noteId: "ink-1" });
+  demo.people[0].notes = demo.people[0].notes.filter((n) => n.id !== "ink-1");
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
   // Series settings: the one-time carry-over offer, item by item.
   const offer = [
     { key: "gemini.model", label: "Geminiのモデル", value: "gemini-2.5-pro", by: "recipe", at: "2026-10-22T01:00:00Z" },

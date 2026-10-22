@@ -111,6 +111,23 @@ class Backend {
         p.notes.push({ id: crypto.randomUUID(), time: Date.now(), text: String(q.text) });
         return st.put(p);
       }
+      case "inkNote": {
+        // A handwritten note from the pen pad (PNG, base64): a new note, or a new picture for one.
+        const png = Buffer.from(String(q.png || ""), "base64");
+        if (png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50) throw new Error("手書きの画像が不正です");
+        const name = crypto.randomUUID() + ".png";
+        await st.writeMedia(name, png);
+        const p = st.person(id);
+        let n = p.notes.find((x) => x.id === q.noteId);
+        if (!n) p.notes.push((n = { id: crypto.randomUUID(), time: Date.now(), text: "" }));
+        n.ink = name;
+        await st.put(p);
+        if (q.read && this.secrets.get()) this.inkRead(id, n.id);
+        return;
+      }
+      case "inkRead":
+        this.needKey();
+        return this.inkRead(id, q.noteId);
       case "editNote": {
         const p = st.person(id);
         for (const n of p.notes) if (n.id === q.noteId) n.text = String(q.text);
@@ -419,6 +436,26 @@ class Backend {
       ...(offer.length ? { seriesOffer: offer } : {}),
       seriesError: this.settings.get("seriesError", ""),
     };
+  }
+
+  // Gemini writes out a handwritten note in the background; the picture stays the original.
+  async inkRead(id, noteId) {
+    this.toast("手書きを文字にしています");
+    try {
+      const n = this.store.person(id).notes.find((x) => x.id === noteId);
+      if (!n || !n.ink) return;
+      const s = this.settings;
+      const png = Buffer.from(await this.store.readMedia(n.ink));
+      const out = await gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, "ink", [png], this.fetch, "image/png");
+      const p = this.store.person(id); // fresh: the user may have edited meanwhile
+      const m = p.notes.find((x) => x.id === noteId);
+      if (!m) return;
+      m.text = String(out.text || "").trim();
+      await this.store.put(p);
+      this.toast(m.text ? "手書きを文字にしました（検索できます）" : "文字は見つかりませんでした");
+    } catch (e) {
+      this.event("error", e.message || String(e));
+    }
   }
 
   needKey() {

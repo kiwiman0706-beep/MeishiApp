@@ -1,7 +1,7 @@
 {
   "name": "theta-meishi-hatch",
   "productName": "Theta Meishi Hatch",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Theta Meishi Hatch for Windows / Mac — reads and writes the Theta Vault directly; also serves DeskHatch drawers.",
   "main": "main.js",
   "license": "UNLICENSED",

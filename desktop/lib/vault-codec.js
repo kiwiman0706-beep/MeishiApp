@@ -160,6 +160,8 @@ function render(p) {
   b += H_NOTES + "\n";
   for (const n of [...(p.notes || [])].sort((a, c) => (a.time || 0) - (c.time || 0))) {
     const lines = String(n.text || "").split("\n");
+    // A handwritten note: its picture first, then the text read from it (if any).
+    if (n.ink) lines[0] = `![[${pathOf(n.ink)}|480]]` + (lines[0] ? " " + lines[0] : "");
     b += "- " + noteTime(n.time || 0) + " " + lines[0];
     for (const l of lines.slice(1)) b += "\n  " + l;
     b += " ^" + blockId(n.id) + "\n";
@@ -204,6 +206,7 @@ const unlink = (s) => {
 };
 const NOTE = /^[-*]\s+(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2}))?\s*(.*)$/;
 const BLOCK = /\s\^([A-Za-z0-9-]+)\s*$/;
+const INK = /^!\[\[([^\]|]*\/_files\/[^\]|]+\.png)(?:\|[^\]]*)?\]\]\s*/;
 
 function parse(md, allowNewId = false) {
   md = md.replace(/\r\n/g, "\n");
@@ -339,6 +342,11 @@ function parse(md, allowNewId = false) {
         const hm = m[2] == null ? "00:00" : m[2].length === 4 ? "0" + m[2] : m[2];
         const time = ms(m[1] + "T" + hm, now);
         last = { id: bid != null ? bid : nameUUID(String(time) + t), time, text: t.trim() };
+        const im = INK.exec(last.text);
+        if (im && local(im[1])) {
+          last.ink = local(im[1]);
+          last.text = last.text.slice(im[0].length).trim();
+        }
         notes.push(last);
       } else if (last && line.startsWith("  ")) {
         let t = line.slice(2);

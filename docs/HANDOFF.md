@@ -1,5 +1,11 @@
 # 開発引き継ぎ
 
+## 0.17.0での変更（手書きメモ）
+
+- 共通UIの `inkOpen` / `inkSave`（全画面のパッド、`#inkpad` は `#app` の外なので再描画で消えない）。Pointer Events：ペンは筆圧で太さ（`0.35+1.1×pressure`）、`getCoalescedEvents` で細かく。ペンを一度使うと「指でも書く」がオフになり、指・手のひらは紙をスクロール（`touch-action:none` のまま自前でスクロール）。Sペンのサイドボタン（`buttons&2`）・Windowsペンの消しゴム側（`buttons&32` / `button 5`）で消す。元に戻す・やり直す・下に書き足す。書き足しは保存済みPNGを下地に描く。
+- 保存は書いた範囲だけを白地のPNG（幅1600px以内）にして `inkNote {id, noteId?, png(base64), read}`。`notes[].ink` に画像名。Android `MainActivity`、デスクトップ・Web `Backend` に同じ処理。`read` か「文字にする」（`inkRead`）でGemini（`INK_PROMPT`、`Gemini.ink` / `gemini.generate(…, "ink", …, "image/png")`）が `text` に書き起こす（検索対象になる）。
+- 画像の参照：`Sync.media` / `Store.referenced` / `model.media` / バックアップの名前の付け替えに `notes[].ink` を追加（無いと同期されず、掃除で消える）。
+
 ## 0.16.0での変更（シリーズの設定の引き継ぎ）
 
 - 仕様は `docs/THETA_SHARED_SETTINGS.md`（§6に各版の対応表）。規則は `desktop/lib/series.js` と `SeriesSettings.java`（同じテスト）、Meishi側の配線は `Series.java`（Android）と `Backend.series*`（デスクトップ・Web共通、Webは `WebBackend` で上書き）。

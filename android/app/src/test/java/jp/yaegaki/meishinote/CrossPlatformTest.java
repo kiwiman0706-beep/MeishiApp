@@ -34,7 +34,9 @@ public class CrossPlatformTest {
     for (String k : new String[] {"name", "kana", "company", "title", "email", "mobile", "address", "tags", "metDate", "metPlace", "rawText"})
       assertEquals(k, s.getString(k), p.getString(k));
     assertEquals(s.getLong("created"), p.getLong("created"));
-    assertEquals(2, p.getJSONArray("notes").length());
+    assertEquals(4, p.getJSONArray("notes").length());
+    assertEquals("ink1.png", p.getJSONArray("notes").getJSONObject(2).getString("ink"));
+    assertEquals("4/1 訪問\n資料持参", p.getJSONArray("notes").getJSONObject(2).getString("text"));
     assertEquals("note-2", p.getJSONArray("notes").getJSONObject(1).getString("id"));
     assertEquals("見積もり送付\n来週フォロー", p.getJSONArray("notes").getJSONObject(1).getString("text"));
     assertEquals(Sync.hash(VaultCodec.parse(VaultCodec.render(s))), Sync.hash(p));

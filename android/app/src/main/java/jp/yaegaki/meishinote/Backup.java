@@ -138,6 +138,10 @@ public final class Backup {
           JSONObject p = add.getJSONObject(i);
           for (String key : new String[] {"portrait", "logo"})
             if (mapping.containsKey(p.optString(key))) p.put(key, mapping.get(p.getString(key)));
+          JSONArray inkNotes = p.optJSONArray("notes");
+          for (int j = 0; inkNotes != null && j < inkNotes.length(); j++)
+            if (mapping.containsKey(inkNotes.getJSONObject(j).optString("ink")))
+              inkNotes.getJSONObject(j).put("ink", mapping.get(inkNotes.getJSONObject(j).getString("ink")));
           for (String key : new String[] {"pages", "sources", "audio"}) {
             JSONArray a = p.getJSONArray(key);
             for (int j = 0; j < a.length(); j++) {

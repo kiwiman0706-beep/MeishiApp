@@ -1,5 +1,5 @@
 ---
-rev: d4476c783700
+rev: ff637ddb555f
 theta: meishi/person@1
 id: 2b6f3c1e-aaaa-bbbb-cccc-000000000001
 name: 山田 太郎
@@ -57,6 +57,9 @@ greetings:
 - 2024-03-05 10:00 展示会でご挨拶 ^note-1
 - 2024-03-06 13:40 見積もり送付
   来週フォロー ^note-2
+- 2024-03-07 17:26 ![[Meishi/_files/ink1.png|480]] 4/1 訪問
+  資料持参 ^note-3
+- 2024-03-08 21:13 ![[Meishi/_files/ink2.png|480]] ^note-4
 
 ## 年賀状・お便り・書類
 | 年 | 日付 | 届いた/送った | 種類 | 件名・差出人 |

@@ -128,6 +128,9 @@ public final class Sync {
           for (int k = 0; k < fs.length(); k++)
             if (!fs.getJSONObject(k).optString("file").isEmpty()) files.add(fs.getJSONObject(k).getString("file"));
       }
+    JSONArray notesWithInk = p.optJSONArray("notes");
+    for (int i = 0; notesWithInk != null && i < notesWithInk.length(); i++)
+      if (!notesWithInk.getJSONObject(i).optString("ink").isEmpty()) files.add(notesWithInk.getJSONObject(i).getString("ink"));
     return files;
   }
 
@@ -136,6 +139,7 @@ public final class Sync {
     if (n.endsWith(".jpg")) return "image/jpeg";
     if (n.endsWith(".pdf")) return "application/pdf";
     if (n.endsWith(".m4a")) return "audio/mp4";
+    if (n.endsWith(".png")) return "image/png";
     return "application/octet-stream";
   }
 

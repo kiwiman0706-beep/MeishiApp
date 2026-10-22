@@ -251,3 +251,26 @@ test("series settings: another app's values are offered once, chosen ones applie
   assert.match(t.backend.state().seriesError, /settings\.json/);
   assert.strictEqual(fs.readFileSync(file, "utf8"), "{ broken");
 });
+
+test("handwritten note: PNG saved as a note picture in the vault, Gemini writes out its text", async () => {
+  const t = setup({ text: "4/1 訪問\n資料持参" });
+  t.setKey("AIza-test");
+  await t.backend.dispatch("new", {});
+  const id = t.store.people()[0].id;
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("ink")]);
+  await t.backend.dispatch("inkNote", { id, png: png.toString("base64"), read: true });
+  for (let i = 0; i < 50 && !t.store.person(id).notes[0]?.text; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepStrictEqual(t.events.filter((e) => e.type === "error"), []);
+  const n = t.store.person(id).notes[0];
+  assert.match(n.ink, /^[0-9a-f-]+\.png$/);
+  assert.strictEqual(n.text, "4/1 訪問\n資料持参");
+  assert.deepStrictEqual(Buffer.from(await t.store.readMedia(n.ink)), png);
+  assert.ok(require("../lib/model").media(t.store.person(id)).has(n.ink));
+  const md = fs.readFileSync(path.join(t.root, "Meishi", "People", fs.readdirSync(path.join(t.root, "Meishi", "People"))[0]), "utf8");
+  assert.ok(md.includes(`![[Meishi/_files/${n.ink}|480]] 4/1 訪問`));
+  // Written over: a new picture for the same note.
+  await t.backend.dispatch("inkNote", { id, noteId: n.id, png: png.toString("base64") });
+  assert.strictEqual(t.store.person(id).notes.length, 1);
+  assert.notStrictEqual(t.store.person(id).notes[0].ink, n.ink);
+  await assert.rejects(t.backend.dispatch("inkNote", { id, png: Buffer.from("not a png").toString("base64") }), /不正/);
+});
