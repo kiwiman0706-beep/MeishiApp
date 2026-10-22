@@ -11,6 +11,7 @@
 | `android/` | Androidアプリ（Java + WebView UI）。ビルド方法は `android/README.md` |
 | `desktop/` | Windows / Mac版（Electron）。Vaultフォルダを直接読み書きし、DeskHatchのドロワーにも表示できる。使い方は `desktop/README.md` |
 | `web/` | Web版（PWA。iPhoneのSafariでホーム画面に追加）。共通UIとデスクトップの処理をブラウザで動かす。`https://kiwiman0706-beep.github.io/MeishiApp/`、設定は `docs/WEB_SETUP.md` |
+| `tools/` | 補助スクリプト。`make_hatch_kit.sh` はシリーズの他のアプリ用の資料一式（仕様・設定手順・落とし穴・コード・開発スレッド用の文）をZIPに |
 | `docs/` | 引き継ぎメモ・検証記録・ロードマップ |
 
-Theta Hatch シリーズ共通の約束は [`docs/THETA_HATCH_SPEC.md`](docs/THETA_HATCH_SPEC.md)、今後の予定は [`docs/ROADMAP.md`](docs/ROADMAP.md) を参照してください。
+Theta Hatch シリーズ共通の約束は [`docs/THETA_HATCH_SPEC.md`](docs/THETA_HATCH_SPEC.md)（設定の引き継ぎは [`docs/THETA_SHARED_SETTINGS.md`](docs/THETA_SHARED_SETTINGS.md)）、今後の予定は [`docs/ROADMAP.md`](docs/ROADMAP.md) を参照してください。
