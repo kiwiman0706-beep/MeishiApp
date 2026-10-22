@@ -45,12 +45,15 @@
 各アプリは自分の設定（端末内）に、シリーズ項目ごとの **追従フラグ** を持つ。
 
 ```
-follow["gemini.model"] = true   … シリーズの値を使う。このアプリで変えたら「他のアプリにも反映しますか？」と聞き、はいなら series に書く
+follow["gemini.model"] = true   … シリーズの値を使う。このアプリで変えたら、次の同期で series に書く（他のアプリにも反映）
 follow["gemini.model"] = false  … このアプリだけの値を使う。series は読むだけ・変えない
 ```
 
 - 画面では、シリーズ項目の設定の横に小さく「シリーズ共通」か「このアプリだけ」を表示し、切り替えられる。
-- 同期で series の値が変わったら、`follow=true` の項目だけ反映する（反映したことを一度だけ知らせる）。
+- 同期で series の値が変わったら、`follow=true` の項目だけ反映する。
+- 各アプリは「自分が使える項目」だけを引き継ぎ画面・設定画面に出す（例：Web版にカレンダーの登録先は出さない）。使えない項目も、自分の値があれば series に書き出す（他のアプリが使う）。
+- 引き継ぎが決まるまで（初回同期の前・引き継ぎ画面に答える前）は、このアプリでの変更を series に書かない。他のアプリの値を、聞く前に上書きしないため。
+- 共通の処理は `desktop/lib/series.js`（JS）と `SeriesSettings.java`（Android）。同じテストを両方で流している。
 
 ### 初回起動（引き継ぎ）
 
@@ -90,4 +93,14 @@ Theta Hatch の設定を引き継ぎますか？         （Meishi Hatch で設�
 
 ## 6. Theta Meishi Hatch（最初のアプリ）の対応状況
 
-- 0.15.4時点：未実装（この文書が仕様）。実装するときは、Meishiの設定画面のモデル・アカウント・カレンダー登録先を `series` に書き出し、`follow` を持つ。ContentProvider（§4）も追加する。
+0.16.0 で実装：
+
+| | 書き出す項目 | 引き継げる項目 | `.theta/settings.json` を読み書きする時 |
+| --- | --- | --- | --- |
+| Android | モデル・呼び出し形式・Googleアカウント・カレンダー登録先・`google.cloudReady` | モデル・形式・アカウント（端末にあるものだけ）・カレンダー（アカウント＋名前で照合） | Drive同期のたび |
+| Windows / Mac | モデル・形式 | モデル・形式 | 起動時と設定を変えた時（Vaultフォルダ＝Googleドライブ for デスクトップが運ぶ） |
+| Web | モデル・形式・Googleアカウント・`google.webClientId` | モデル・形式 | Drive同期のたび |
+
+- 画面：ホームに「シリーズの設定を引き継ぐ」（初回だけ）、メニュー →「Theta Hatch シリーズの設定」で項目ごとに「シリーズ共通／このアプリだけ」を切り替え。
+- §4：Android の `SeriesProvider`（`content://<applicationId>.theta/info`、`/secret/gemini.key`）。Meishi にキーが無く、同じ鍵で署名したシリーズのアプリがキーを持っていれば、「Gemini APIキー・モデル」に「○○ のキーを使う」が出る。貸した側は通知で知らせる。
+- 未実装：デスクトップの `shared-secrets.json`、Web の共通 IndexedDB（2つ目のアプリができた時に、そのアプリと一緒に入れる）、§5 のガイドの畳み込み（`google.cloudProject`）。

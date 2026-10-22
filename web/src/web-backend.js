@@ -137,6 +137,26 @@ class WebBackend extends Backend {
     }
   }
 
+  // Series settings: .theta/settings.json on Drive, read and written during a sync. The web
+  // version also publishes its OAuth client ID and account (other installs show them in the guide).
+  seriesCurrent() {
+    const o = super.seriesCurrent();
+    const id = this.settings.get("googleClientId", "");
+    if (id) o["google.webClientId"] = id;
+    if (this.google.email) o["google.account"] = this.google.email;
+    return o;
+  }
+  async seriesSync(during) {
+    // Only within a sync (signed in, sync turned on): never a sign-in window of its own.
+    if (during) return super.seriesSync();
+  }
+  seriesFile() {
+    const vault = this.vault;
+    let io;
+    const get = async () => (io = io || (await vault.settingsFile()));
+    return { read: async () => (await get()).read(), write: async (t) => (await get()).write(t) };
+  }
+
   // Signed in during a tap: cards waiting for their contact get it now.
   async afterSignIn() {
     if (!this.google.email) await this.google.whoami().catch(() => {});
@@ -207,6 +227,7 @@ class WebBackend extends Backend {
       try {
         const r = await this.vault.run((t) => shown && this.event("busy", t));
         this.settings.set({ lastSync: Date.now(), syncError: "" });
+        await this.seriesSync(true);
         if (shown) this.toast(`同期しました（受信 ${r.down}・送信 ${r.up}${r.merged ? `・統合 ${r.merged}` : ""}${r.deleted ? `・削除 ${r.deleted}` : ""}）`);
       } catch (e) {
         this.settings.set({ syncError: e instanceof NeedLogin ? "Googleへの再ログインが必要です" : e.message });

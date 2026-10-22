@@ -507,6 +507,36 @@ const p = (id, name, company, status = "confirmed") => ({
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "installUpdate" });
   await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  // Series settings: the one-time carry-over offer, item by item.
+  const offer = [
+    { key: "gemini.model", label: "Geminiのモデル", value: "gemini-2.5-pro", by: "recipe", at: "2026-10-22T01:00:00Z" },
+    { key: "calendar", label: "Googleカレンダーの登録先", value: { account: "a@x.jp", name: "仕事" }, by: "recipe", at: "2026-10-22T01:00:00Z" },
+  ];
+  const series = [
+    { key: "gemini.model", label: "Geminiのモデル", value: "gemini-2.5-pro", mine: "gemini-2.5-flash", by: "recipe", follow: true },
+    { key: "calendar", label: "Googleカレンダーの登録先", value: { account: "a@x.jp", name: "仕事" }, mine: null, by: "recipe", follow: false },
+  ];
+  await page.evaluate(([d, o, s]) => { onNative({ type: "state", data: { ...d, seriesOffer: o, series: s } }); go("home"); }, [demo, offer, series]);
+  await page.getByRole("button", { name: /シリーズの設定を引き継ぐ/ }).click();
+  assert(await page.getByText("Theta Recipe Hatch").first().isVisible());
+  assert(await page.getByText("仕事（a@x.jp）").isVisible());
+  await page.locator("#sofr1").uncheck({ force: true });
+  await page.screenshot({ path: path.join(screenshotDir, "21-series-offer.png"), fullPage: true });
+  await page.getByRole("button", { name: "決定" }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "seriesAdopt", keys: ["gemini.model"] });
+  await page.evaluate(([d, s]) => { onNative({ type: "state", data: { ...d, series: s } }); go("menu"); }, [demo, series]);
+  await page.getByRole("button", { name: /Theta Hatch シリーズの設定/ }).click();
+  await page.locator("#modal input.switch").nth(1).check({ force: true });
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "seriesFollow", key: "calendar", on: true });
+  await page.evaluate(() => closeModal());
+  // No key yet, another app of the series on the phone has one: offered on the Gemini page.
+  await page.evaluate((d) => { onNative({ type: "state", data: { ...d, keySet: false, keyLenders: [{ package: "jp.yaegaki.theta.recipe", label: "Theta Recipe Hatch" }] } }); settingsDraft = null; go("gemini"); }, demo);
+  await page.getByRole("button", { name: /Theta Recipe Hatch のキーを使う/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "importKey", package: "jp.yaegaki.theta.recipe" });
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); go("home"); }, demo);
   // HTML injection in content must be rendered as text.
   demo.people[0].name = '<img src=x onerror="window.pwned=true">';
   demo.people[0].notes[0].text = "<script>window.pwned=true</script>";

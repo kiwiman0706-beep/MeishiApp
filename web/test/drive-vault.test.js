@@ -205,3 +205,18 @@ test("reads what Android writes (same note text), and Android reads ours", async
   assert.strictEqual(p.logoSource, "web:example.com");
   assert.strictEqual(V.editedOutside(V.render(p)), false);
 });
+
+test("series settings file: read when absent, created once, then updated in place", async () => {
+  const drive = new FakeDrive();
+  const a = await browser(drive);
+  await a.vault.run();
+  const io = await a.vault.settingsFile();
+  assert.strictEqual(await io.read(), null);
+  await io.write('{"spec":1}\n');
+  await io.write('{"spec":1,"series":{}}\n');
+  const files = [...drive.files.values()].filter((f) => f.name === "settings.json");
+  assert.strictEqual(files.length, 1);
+  assert.strictEqual(files[0].parents[0], drive.folderId("Theta Vault/.theta"));
+  const b = await browser(drive);
+  assert.strictEqual(await (await b.vault.settingsFile()).read(), '{"spec":1,"series":{}}\n');
+});

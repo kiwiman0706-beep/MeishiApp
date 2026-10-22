@@ -10,6 +10,7 @@ const importer = require("./importer");
 const gemini = require("./gemini");
 const V = require("./vault-codec");
 const weblogo = require("./weblogo");
+const series = require("./series");
 
 // Features the desktop offers; the UI hides the rest (see THETA_HATCH_SPEC §4.1).
 const CAPS = ["pick", "folder", "gemini", "vault", "map", "export", "nenga", "attach"];
@@ -63,6 +64,7 @@ class Backend {
       lastReport: s.get("lastReport", ""),
       upgradeLogos: model.logoPicks(this.store.people()).length,
       upgradeRecut: model.recutPicks(this.store.people()).length,
+      ...this.seriesState(),
       ...this.info(), // app version and a pending update (main.js)
     };
   }
@@ -85,7 +87,11 @@ class Backend {
     switch (action) {
       case "boot":
       case "opened":
-        return action === "boot" ? this.refresh() : undefined;
+        if (action === "boot") {
+          this.refresh();
+          await this.seriesSync();
+        }
+        return;
       case "new": {
         const p = model.empty();
         st.put(p);
@@ -239,6 +245,11 @@ class Backend {
         }
         if ("autoRecognize" in q) set.autoRecognize = !!q.autoRecognize;
         this.settings.set(set);
+        if (set.model) {
+          this.seriesChanged("gemini.model", set.model);
+          this.seriesChanged("gemini.format", set.format);
+          await this.seriesSync();
+        }
         this.refresh();
         return this.toast("設定を保存しました");
       }
@@ -318,6 +329,24 @@ class Backend {
         return this.geocode();
       case "installUpdate":
         return this.svc.installUpdate && this.svc.installUpdate();
+      case "seriesAdopt": {
+        // The carry-over choice: checked items follow the series, the rest stay this app's.
+        const keys = Array.isArray(q.keys) ? q.keys.map(String) : [];
+        const offers = this.settings.get("seriesOffer", []);
+        this.settings.set({ series: series.adopt(this.seriesLocal(), offers, keys), seriesOffer: [] });
+        this.seriesApply(Object.fromEntries(offers.filter((o) => keys.includes(o.key)).map((o) => [o.key, o.value])));
+        await this.seriesSync();
+        this.refresh();
+        return this.toast(keys.length ? keys.length + "項目を引き継ぎました" : "このアプリの設定のまま使います");
+      }
+      case "seriesFollow": {
+        const local = series.setFollow(this.seriesLocal(), String(q.key), !!q.on);
+        this.settings.set({ series: local });
+        const e = local.doc.series[q.key];
+        if (q.on && e) this.seriesApply({ [q.key]: e.value }); // following again: take the series value
+        await this.seriesSync();
+        return this.refresh();
+      }
       case "chooseVault": {
         const dir = await this.svc.openFolder("Theta Vault のフォルダ（Googleドライブの「Theta Vault」など）");
         if (dir) this.event("chooseVault", dir);
@@ -326,6 +355,70 @@ class Backend {
       default:
         return this.toast(NOT_HERE);
     }
+  }
+
+  // ---- Theta Hatch series settings (series.js, docs/THETA_SHARED_SETTINGS.md) ------------
+  // The items this app takes from the series; the others it only publishes or keeps.
+  seriesUses() {
+    return ["gemini.model", "gemini.format"];
+  }
+  seriesLocal() {
+    return this.settings.get("series", null) || series.initial();
+  }
+  // This app's values of the series items (unset ones left out).
+  seriesCurrent() {
+    const s = this.settings, o = {};
+    if (s.get("model", "")) o["gemini.model"] = s.get("model", "");
+    if (s.get("format", "")) o["gemini.format"] = s.get("format", "");
+    return o;
+  }
+  seriesApply(values) {
+    const set = {};
+    const m = values["gemini.model"];
+    if (typeof m === "string" && /^[A-Za-z0-9._-]+$/.test(m)) set.model = m;
+    if (["legacy", "modern"].includes(values["gemini.format"])) set.format = values["gemini.format"];
+    this.settings.set(set);
+  }
+  seriesChanged(key, value) {
+    this.settings.set({ series: series.changed(this.seriesLocal(), key, value, series.ME) });
+  }
+  // Where .theta/settings.json lives: { read() → text | null, write(text) }; on the desktop, the
+  // vault folder itself (Google Drive for desktop carries it to the other devices).
+  seriesFile() {
+    if (!this.store.root) return null;
+    const file = path.join(this.store.root, ".theta", "settings.json");
+    return {
+      read: () => fs.promises.readFile(file, "utf8").catch((e) => (e.code === "ENOENT" ? null : Promise.reject(e))),
+      write: async (text) => {
+        await fs.promises.mkdir(path.dirname(file), { recursive: true });
+        await fs.promises.writeFile(file + ".tmp", text);
+        await fs.promises.rename(file + ".tmp", file);
+      },
+    };
+  }
+  async seriesSync() {
+    const io = this.seriesFile();
+    if (!io) return;
+    const s = this.settings;
+    try {
+      const r = series.sync(this.seriesLocal(), await io.read(), this.seriesCurrent(), series.ME);
+      if (r.broken) return s.set({ seriesError: "Theta Vault の .theta/settings.json が読めません（手で直した場合はJSONの形を確認してください）" });
+      if (r.write) await io.write(r.write);
+      this.seriesApply(r.apply);
+      const uses = this.seriesUses();
+      s.set({ series: r.local, seriesOffer: r.offers.filter((o) => uses.includes(o.key)), seriesError: "" });
+    } catch (e) {
+      s.set({ seriesError: "シリーズの設定：" + (e.message || e) });
+    }
+  }
+  seriesState() {
+    const uses = this.seriesUses();
+    const offer = this.settings.get("seriesOffer", []);
+    return {
+      series: series.view(this.seriesLocal(), this.seriesCurrent()).filter((i) => uses.includes(i.key)),
+      ...(offer.length ? { seriesOffer: offer } : {}),
+      seriesError: this.settings.get("seriesError", ""),
+    };
   }
 
   needKey() {

@@ -45,6 +45,24 @@ class DriveVault {
     };
   }
 
+  // .theta/settings.json, the series settings shared with the other Theta Hatch apps (series.js).
+  async settingsFile() {
+    const theta = await this.child(await this.child("root", "Theta Vault"), ".theta");
+    const find = async () => (await this.api.list(`name='settings.json' and '${theta}' in parents and trashed=false`))[0];
+    return {
+      read: async () => {
+        const f = await find();
+        return f ? new TextDecoder().decode(await this.api.download(f.id)) : null;
+      },
+      write: async (text) => {
+        const f = await find();
+        const bytes = new TextEncoder().encode(text);
+        if (f) await this.api.update(f.id, {}, bytes, "application/json");
+        else await this.api.create({ name: "settings.json", parents: [theta], mimeType: "application/json" }, bytes, "application/json");
+      },
+    };
+  }
+
   // Every note under Meishi/ (subfolders too: people organise in Obsidian), except _files.
   async notes(f) {
     const out = [];

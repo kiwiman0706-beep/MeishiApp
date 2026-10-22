@@ -375,7 +375,7 @@ function home() {
   const drive = state.driveFolderName
     ? `<button class="setup drive" onclick="call('driveImport')">${icon("cloud")}<span><b>Google Driveから取り込む</b><small>${esc(state.driveFolderName)} の新しい名刺</small></span>${icon("next")}</button>`
     : "";
-  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${updateBanner}${googleBanner}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
+  return `<header class="top"><div class="brand"><div class="mark">${icon("card")}</div><div><div class="brandline">THETA</div><h1>Meishi Hatch</h1></div></div></header>${recordBanner()}${busyNow}${updateBanner}${googleBanner}${seriesBanner()}${setup}${dupBanner}${nengaBanner}${drive}<div class="toolbar"><div class="search">${icon("search")}<input id="search" placeholder="氏名・会社・メモを検索" value="${esc(query)}" oninput="query=this.value;updateList()"></div></div>${state.people.length ? `<div class="views" role="tablist">${[
     ["cards", "リスト", "list"],
     ["table", "表", "table"],
     ["calendar", "カレンダー", "clock"],
@@ -1279,6 +1279,53 @@ function upgradeSheet() {
     ].join("")}</div><p class="caption gap">Geminiの費用の目安：合計 約${yen}円以下。手で選んだロゴや入力済みの読み仮名は変えません。</p><button class="primary full gap" onclick="closeModal();call('upgradeAll')">${icon("spark")}まとめて実行</button>`,
   );
 }
+// ---- Theta Hatch series settings (docs/THETA_SHARED_SETTINGS.md) -------------------
+function seriesValue(key, v) {
+  if (v === undefined || v === null || v === "") return "なし";
+  if (key === "calendar") return esc(v.name || "") + (v.account ? `（${esc(v.account)}）` : "");
+  if (key === "google.cloudReady") return v ? "済み" : "まだ";
+  if (key === "gemini.format") return v === "modern" ? "新しいモデル向け" : "標準";
+  if (key === "google.webClientId") return esc(String(v).slice(0, 12)) + "…";
+  return esc(String(v));
+}
+function seriesApp(by) {
+  return by ? "Theta " + by.charAt(0).toUpperCase() + by.slice(1) + " Hatch" : "";
+}
+function seriesSummary() {
+  const items = state.series || [];
+  const shared = items.filter((i) => i.follow).length;
+  return `${shared}項目をシリーズで共通 ・ ${items.length - shared}項目はこのアプリだけ`;
+}
+// First launch with settings from other apps of the series: ask once, item by item.
+function seriesBanner() {
+  const offers = state.seriesOffer || [];
+  if (!offers.length) return "";
+  const from = [...new Set(offers.map((o) => seriesApp(o.by)))].join("・");
+  return `<button class="setup" onclick="seriesOfferSheet()">${icon("link")}<span><b>シリーズの設定を引き継ぐ</b><small>${esc(from)} で使っている設定が ${offers.length}項目あります</small></span>${icon("next")}</button>`;
+}
+function seriesOfferSheet() {
+  const offers = state.seriesOffer || [];
+  const mine = Object.fromEntries((state.series || []).map((i) => [i.key, i.mine]));
+  modal(
+    `<h2>${icon("link")} シリーズの設定を引き継ぐ</h2><p class="caption">Theta Hatch シリーズの他のアプリで使っている設定です。チェックした項目はシリーズ共通になり、どちらかで変えると他にも反映されます。チェックしない項目はこのアプリだけの設定のままです（あとからメニューで変えられます）。</p><div class="mlist">${offers
+      .map(
+        (o, i) =>
+          `<label class="mrow"><span class="mt"><b>${esc(o.label)}</b><small>${seriesValue(o.key, o.value)} ・ ${esc(seriesApp(o.by))}${mine[o.key] !== undefined && mine[o.key] !== null && mine[o.key] !== "" ? `<br>このアプリ：${seriesValue(o.key, mine[o.key])}` : ""}</small></span><input type="checkbox" class="switch" id="sofr${i}" checked></label>`,
+      )
+      .join("")}</div><p class="caption gap">APIキーなどの秘密の値は、ここでは引き継ぎません。</p><button class="primary full gap" onclick="const keys=state.seriesOffer.filter((o,i)=>$('sofr'+i).checked).map((o)=>o.key);closeModal();call('seriesAdopt',{keys})">決定</button><button class="outline full gap" onclick="closeModal();call('seriesAdopt',{keys:[]})">すべてこのアプリだけの設定にする</button>`,
+  );
+}
+function seriesSheet() {
+  const items = state.series || [];
+  modal(
+    `<h2>${icon("link")} Theta Hatch シリーズの設定</h2><p class="caption">オンの項目はシリーズ共通です（Googleドライブの Theta Vault にある <code>.theta/settings.json</code> を通じて、他のアプリと同じ値になります）。オフにすると、このアプリだけの値を使います。</p>${state.seriesError ? `<div class="tip">⚠ ${esc(state.seriesError)}</div>` : ""}<div class="mlist">${items
+      .map(
+        (i) =>
+          `<label class="mrow"><span class="mt"><b>${esc(i.label)}</b><small>${i.follow ? "シリーズ：" + seriesValue(i.key, i.value) + (i.by ? " ・ " + esc(seriesApp(i.by)) : "") : "このアプリ：" + seriesValue(i.key, i.mine)}</small></span><input type="checkbox" class="switch" ${i.follow ? "checked" : ""} onchange="call('seriesFollow',{key:'${esc(i.key)}',on:this.checked})"></label>`,
+      )
+      .join("")}</div><p class="caption gap">同期のたびに確認します。APIキーは共有しません（同じ端末のシリーズのアプリからは、利用者の操作でコピーできます）。</p>`,
+  );
+}
 function syncStart() {
   if (state.platform === "web" ? !state.googleClientId : state.driveAuthorized === false) return setupGuide("", "sync");
   if (
@@ -1331,7 +1378,8 @@ function menuPage() {
     menuRow("table", "一覧をCSVで書き出す", "Excelで開けるUTF-8 CSV", "call('export',{kind:'csv'})"),
     phoneOnly("backup", menuRow("cloud", "バックアップ・復元", "Google DriveへZIP保存", "backupSheet()")),
   ])}${section("設定", [
-    menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
+    menuRow("spark", "Gemini APIキー・モデル", state.keySet ? "登録済み ・ " + esc(state.model) : state.keyLenders?.length ? "未設定 ・ " + esc(state.keyLenders[0].label) + " のキーを使えます" : "未設定", "go('gemini')", state.keySet ? "" : "attnrow"),
+    state.series?.length || state.seriesError ? menuRow("link", "Theta Hatch シリーズの設定", state.seriesError ? "⚠ " + esc(state.seriesError) : seriesSummary(), "seriesSheet()", state.seriesError ? "attnrow" : "") : "",
     `<label class="mrow"><span class="mi">${icon("camera")}</span><span class="mt"><b>取り込み後に自動で読み取る</b><small>${can("scan") ? "撮影・Drive・" : ""}ファイルの取り込み後、バックグラウンドで処理</small></span><input type="checkbox" class="switch" ${state.autoRecognize !== false ? "checked" : ""} onchange="call('settings',{autoRecognize:this.checked})"></label>`,
     phoneOnly("contacts", `<label class="mrow"><span class="mi">${icon("user")}</span><span class="mt"><b>読み取り後に連絡先へ自動登録</b><small>重複は後から一覧でお知らせします</small></span><input type="checkbox" class="switch" ${state.autoContact !== false ? "checked" : ""} onchange="call('settings',{autoContact:this.checked})"></label>`),
     !can("calendar") ? "" : menuRow("clock", "Googleカレンダー", state.autoCalendar ? "名刺交換を自動で登録" + (state.calendarName ? " ・ " + esc(state.calendarName) : "") : "名刺交換日の予定を登録", "calendarSettings()"),
@@ -1341,7 +1389,7 @@ function menuPage() {
 function geminiPage() {
   if (!settingsDraft)
     settingsDraft = { key: "", model: state.model, format: state.format };
-  return `${backbar("Gemini APIキー・モデル")}<section class="panel"><p class="caption">APIキーはこの端末に暗号化して保存します。バックアップには含めません。</p><label class="label">Gemini APIキー ${state.keySet ? "・登録済み" : ""}</label><input type="password" autocomplete="off" value="${esc(settingsDraft.key)}" placeholder="${state.keySet ? "変更する時だけ入力" : "AIza…"}" oninput="settingsDraft.key=this.value"><label class="label">モデル名</label><input id="model" value="${esc(settingsDraft.model)}" oninput="settingsDraft.model=this.value" autocomplete="off"><p class="caption">利用可能なモデルはAPIキーごとに異なります。保存後に「モデル一覧」から選べます。</p><details class="gap"><summary class="caption">詳細設定</summary><label class="label">API互換設定（通常は変更不要）</label><select onchange="settingsDraft.format=this.value"><option value="legacy" ${settingsDraft.format === "legacy" ? "selected" : ""}>標準</option><option value="modern" ${settingsDraft.format === "modern" ? "selected" : ""}>新しいモデル向け</option></select><p class="caption">新しいモデルで認識時にエラーが出る場合に切り替えてください。</p></details><div class="row gap"><button class="primary" onclick="saveSettings()">保存</button><button class="outline" onclick="call('models')">モデル一覧</button></div>${state.keySet ? `<button class="danger full gap" onclick="if(confirm('保存しているAPIキーを削除しますか？'))call('settings',{clearKey:true})">APIキーを削除</button>` : ""}</section><div class="tip">読み取り時に名刺画像をGoogleのGemini APIへ送信します。APIの料金・データ利用条件は、ご自身のプロジェクト設定をご確認ください。</div>`;
+  return `${backbar("Gemini APIキー・モデル")}<section class="panel"><p class="caption">APIキーはこの端末に暗号化して保存します。バックアップには含めません。</p>${!state.keySet && state.keyLenders?.length ? `<div class="tip"><b>この端末の Theta Hatch アプリのキーを使う</b><br>同じ端末に入っているシリーズのアプリから、登録済みのAPIキーをコピーできます。${state.keyLenders.map((l) => `<button class="outline full gap" onclick="call('importKey',{package:'${esc(l.package)}'})">${icon("spark")}${esc(l.label)} のキーを使う</button>`).join("")}</div>` : ""}<label class="label">Gemini APIキー ${state.keySet ? "・登録済み" : ""}</label><input type="password" autocomplete="off" value="${esc(settingsDraft.key)}" placeholder="${state.keySet ? "変更する時だけ入力" : "AIza…"}" oninput="settingsDraft.key=this.value"><label class="label">モデル名</label><input id="model" value="${esc(settingsDraft.model)}" oninput="settingsDraft.model=this.value" autocomplete="off"><p class="caption">利用可能なモデルはAPIキーごとに異なります。保存後に「モデル一覧」から選べます。</p><details class="gap"><summary class="caption">詳細設定</summary><label class="label">API互換設定（通常は変更不要）</label><select onchange="settingsDraft.format=this.value"><option value="legacy" ${settingsDraft.format === "legacy" ? "selected" : ""}>標準</option><option value="modern" ${settingsDraft.format === "modern" ? "selected" : ""}>新しいモデル向け</option></select><p class="caption">新しいモデルで認識時にエラーが出る場合に切り替えてください。</p></details><div class="row gap"><button class="primary" onclick="saveSettings()">保存</button><button class="outline" onclick="call('models')">モデル一覧</button></div>${state.keySet ? `<button class="danger full gap" onclick="if(confirm('保存しているAPIキーを削除しますか？'))call('settings',{clearKey:true})">APIキーを削除</button>` : ""}</section><div class="tip">読み取り時に名刺画像をGoogleのGemini APIへ送信します。APIの料金・データ利用条件は、ご自身のプロジェクト設定をご確認ください。</div>`;
 }
 let editOnOpen = false;
 function manualAdd() {

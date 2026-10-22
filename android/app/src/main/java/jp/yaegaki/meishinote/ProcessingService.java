@@ -100,7 +100,13 @@ public class ProcessingService extends Service {
     syncRequested = false;
     android.content.SharedPreferences prefs = getSharedPreferences("prefs", 0);
     try {
-      VaultSync.Result r = VaultSync.run(this, new Drive(DriveAuth.silentToken(this)), this::progress);
+      Drive drive = new Drive(DriveAuth.silentToken(this));
+      VaultSync.Result r = VaultSync.run(this, drive, this::progress);
+      try {
+        Series.run(this, new VaultRemote.OnDrive(drive)); // settings shared with the other Theta Hatch apps
+      } catch (Exception e) {
+        prefs.edit().putString("seriesError", "シリーズの設定を同期できませんでした：" + e.getMessage()).apply();
+      }
       prefs.edit().putLong("lastSync", System.currentTimeMillis()).remove("syncError").apply();
       // Quiet when nothing moved; a notification per routine sync would be noise.
       if (r.up + r.down + r.merged + r.deleted > 0 || !r.errors.isEmpty())

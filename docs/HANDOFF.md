@@ -1,5 +1,13 @@
 # 開発引き継ぎ
 
+## 0.16.0での変更（シリーズの設定の引き継ぎ）
+
+- 仕様は `docs/THETA_SHARED_SETTINGS.md`（§6に各版の対応表）。規則は `desktop/lib/series.js` と `SeriesSettings.java`（同じテスト）、Meishi側の配線は `Series.java`（Android）と `Backend.series*`（デスクトップ・Web共通、Webは `WebBackend` で上書き）。
+- `.theta/settings.json`：Android/WebはDrive同期の後（`ProcessingService` → `Series.run`、`WebBackend.sync` → `seriesSync(true)`、Drive上は `DriveVault.settingsFile`）、デスクトップは起動時と設定の変更時（Vaultフォルダのファイル）。読めないファイルは書き換えず `seriesError`。
+- 端末内の状態：`series`（最後の文書・`follow`・`decided`）、`seriesOffer`（引き継ぎ画面の待ち）。`seriesUses` / `Series.USES` が画面に出す項目。
+- APIキーの貸し借り：`SeriesProvider`（権限 `jp.yaegaki.theta.permission.SHARE`、signature）。`state.keyLenders` → `importKey`。
+- 画面：`seriesBanner` / `seriesOfferSheet` / `seriesSheet`、Geminiページの「○○ のキーを使う」。
+
 ## 0.15.4での変更（ロゴの切り出しの補正）
 
 - Geminiのロゴ枠を画像で補正（`Logo.refine` / `model.refineLogoRect`、同じ処理）：枠の周り（枠と同じ大きさ、最低でも名刺の8%）を探索範囲とし、その境界で最も多い色を背景とみなす。背景と色差が大きい画素を「インク」として、各辺の外側にインクが続く間は広げ、余白を詰め、最後に6%＋2pxの余白。背景の隙間で止まるので隣の文字は入らない。画素が無ければGeminiの枠のまま。`imaging.crop(bytes, rectOf, max, refine)`（デスクトップは `nativeImage.toBitmap`、Webはcanvas）。

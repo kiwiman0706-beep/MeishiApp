@@ -343,6 +343,13 @@ public class MainActivity extends Activity {
       for (int i = 0; i < everyone.length(); i++) if (needsKana(everyone.getJSONObject(i))) kana++;
       state.put("kanaMissing", kana);
       state.put("upgradeLogos", Logo.pick(store).size());
+      Series.state(this, state);
+      // Other Theta Hatch apps here with a Gemini key to lend (only offered while this one has none).
+      if (!getSharedPreferences("prefs", 0).contains("key")) {
+        JSONArray lenders = new JSONArray();
+        for (String[] l : SeriesProvider.lenders(this)) lenders.put(new JSONObject().put("package", l[0]).put("label", l[1]));
+        if (lenders.length() > 0) state.put("keyLenders", lenders);
+      }
       state.put("upgradeRecut", Logo.recut(store).size());
       state.put("version", versionName());
       JSONObject update = UpdateCheck.pending(this, versionName());
@@ -542,8 +549,12 @@ public class MainActivity extends Activity {
       event("error", "Google Driveの許可を取得できませんでした。もう一度お試しください。");
       return;
     }
-    // Google access works: the setup guide is no longer offered first.
-    prefs().edit().putBoolean("driveAuthorized", true).apply();
+    // Google access works: the setup guide is no longer offered first (here and, through the
+    // series settings, in the other Theta Hatch apps).
+    if (!prefs().getBoolean("driveAuthorized", false)) {
+      prefs().edit().putBoolean("driveAuthorized", true).apply();
+      Series.changed(this, "google.cloudReady");
+    }
     try {
       work.run(token);
     } catch (Exception e) {
@@ -1134,6 +1145,7 @@ public class MainActivity extends Activity {
         break;
       case "calendarSelect":
         prefs().edit().putLong("calendarId", q.getLong("calendarId")).apply();
+        Series.changed(this, "calendar");
         refresh();
         event("toast", "登録先のカレンダーを変更しました");
         break;
@@ -1228,6 +1240,10 @@ public class MainActivity extends Activity {
           if (q.has("autoContact")) e.putBoolean("autoContact", q.getBoolean("autoContact"));
           if (q.has("autoCalendar")) e.putBoolean("autoCalendar", q.getBoolean("autoCalendar"));
           e.apply();
+          if (q.has("model")) {
+            Series.changed(this, "gemini.model");
+            Series.changed(this, "gemini.format");
+          }
           if (q.optBoolean("autoCalendar"))
             permission(
                 new String[] {Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR},
@@ -1339,6 +1355,31 @@ public class MainActivity extends Activity {
               });
           break;
         }
+      case "seriesAdopt":
+        {
+          // The carry-over choice: checked items follow the series, the rest stay this app's.
+          Set<String> keys = new HashSet<>();
+          JSONArray a = q.optJSONArray("keys");
+          for (int i = 0; a != null && i < a.length(); i++) keys.add(a.getString(i));
+          Series.adopt(this, keys);
+          refresh();
+          event("toast", keys.isEmpty() ? "このアプリの設定のまま使います" : keys.size() + "項目を引き継ぎました");
+          break;
+        }
+      case "importKey":
+        {
+          // The Gemini key of another Theta Hatch app on this phone (the user picked it).
+          String pkg = q.getString("package");
+          String key = SeriesProvider.borrow(this, pkg);
+          VaultKey.save(this, key);
+          refresh();
+          event("toast", SeriesProvider.label(this, pkg) + " のAPIキーを使います");
+          break;
+        }
+      case "seriesFollow":
+        Series.follow(this, q.getString("key"), q.getBoolean("on"));
+        refresh();
+        break;
       case "copyText":
         {
           ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
@@ -1925,6 +1966,7 @@ public class MainActivity extends Activity {
         if (account == null || !"com.google".equals(type))
           throw new IOException("Googleアカウントを選択してください");
         prefs().edit().putString("contactAccount", account).apply();
+        Series.changed(this, "google.account");
         if (q.optBoolean("setupOnly")) {
           Runnable next = afterAccount;
           afterAccount = null;

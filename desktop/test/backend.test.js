@@ -203,3 +203,51 @@ test("HTTP bridge: token, cookie, Host guard, UI, calls", async () => {
     srv.close();
   }
 });
+
+test("series settings: another app's values are offered once, chosen ones applied and kept in sync", async () => {
+  const t = setup({});
+  const file = path.join(t.root, ".theta", "settings.json");
+  const at = new Date(Date.now() - 60000).toISOString();
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      spec: 1,
+      series: {
+        "gemini.model": { value: "gemini-2.5-pro", by: "recipe", at },
+        "gemini.format": { value: "modern", by: "recipe", at },
+        calendar: { value: { account: "a@x.jp", name: "仕事" }, by: "recipe", at },
+      },
+      apps: { recipe: { autoRead: true } },
+    }),
+  );
+  await t.backend.dispatch("settings", { model: "gemini-2.5-flash", format: "legacy" });
+  await t.backend.dispatch("boot", {});
+  let s = t.backend.state();
+  // Only the items this app can use are offered (not the calendar).
+  assert.deepStrictEqual(s.seriesOffer.map((o) => o.key).sort(), ["gemini.format", "gemini.model"]);
+  assert.strictEqual(s.model, "gemini-2.5-flash", "nothing applied before the choice");
+  await t.backend.dispatch("seriesAdopt", { keys: ["gemini.model"] });
+  s = t.backend.state();
+  assert.strictEqual(s.model, "gemini-2.5-pro");
+  assert.strictEqual(s.format, "legacy", "not chosen: stays this app's");
+  assert.ok(!s.seriesOffer);
+  assert.deepStrictEqual(s.series.map((i) => [i.key, i.follow]), [["gemini.model", true], ["gemini.format", false]]);
+  // A change here reaches the file; the other app's section and items are kept.
+  await t.backend.dispatch("settings", { model: "gemini-3-flash", format: "legacy" });
+  let doc = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.strictEqual(doc.series["gemini.model"].value, "gemini-3-flash");
+  assert.strictEqual(doc.series["gemini.model"].by, "meishi");
+  assert.strictEqual(doc.series["gemini.format"].value, "modern");
+  assert.deepStrictEqual(doc.apps.recipe, { autoRead: true });
+  assert.strictEqual(doc.series.calendar.value.name, "仕事");
+  // Another app changes the model: applied at the next sync.
+  doc.series["gemini.model"] = { value: "gemini-3-pro", by: "recipe", at: new Date(Date.now() + 60000).toISOString() };
+  fs.writeFileSync(file, JSON.stringify(doc));
+  await t.backend.dispatch("boot", {});
+  assert.strictEqual(t.backend.state().model, "gemini-3-pro");
+  // A broken file is reported and left alone.
+  fs.writeFileSync(file, "{ broken");
+  await t.backend.dispatch("boot", {});
+  assert.match(t.backend.state().seriesError, /settings\.json/);
+  assert.strictEqual(fs.readFileSync(file, "utf8"), "{ broken");
+});
