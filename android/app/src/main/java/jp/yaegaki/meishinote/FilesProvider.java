@@ -54,6 +54,7 @@ public class FilesProvider extends ContentProvider {
     if (n.endsWith(".zip")) return "application/zip";
     if (n.endsWith(".csv")) return "text/csv";
     if (n.endsWith(".pdf")) return "application/pdf";
+    if (n.endsWith(".vcf")) return "text/x-vcard";
     return "application/octet-stream";
   }
 
@@ -69,7 +70,8 @@ public class FilesProvider extends ContentProvider {
       for (int i = 0; i < cols.length; i++)
         row[i] =
             cols[i].equals(OpenableColumns.DISPLAY_NAME)
-                ? f.getName()
+                // Shared files may carry the name the receiver should see (山田 太郎.vcf).
+                ? (u.getQueryParameter("name") != null ? u.getQueryParameter("name") : f.getName())
                 : cols[i].equals(OpenableColumns.SIZE) ? f.length() : null;
       m.addRow(row);
       return m;

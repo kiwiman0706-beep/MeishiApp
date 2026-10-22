@@ -11,6 +11,8 @@ const gemini = require("./gemini");
 const V = require("./vault-codec");
 const weblogo = require("./weblogo");
 const series = require("./series");
+const qr = require("./qr");
+const vcard = require("./vcard");
 
 // Features the desktop offers; the UI hides the rest (see THETA_HATCH_SPEC §4.1).
 const CAPS = ["pick", "folder", "gemini", "vault", "map", "export", "nenga", "attach"];
@@ -273,6 +275,17 @@ class Backend {
       case "models":
         this.needKey();
         return this.event("models", await gemini.models(this.secrets.get(), this.fetch));
+      case "vcard": {
+        // One or many cards as a vCard file (attach it in Gmail, send it in LINE...).
+        const people = (q.ids || []).map((x) => st.person(String(x)));
+        if (!people.length) throw new Error("名刺を選んでください");
+        const file = await this.svc.saveFile(vcard.fileName(people), vcard.build(people), "text/vcard");
+        if (file) {
+          this.toast("vCardを書き出しました。Gmail・LINEなどで添付して送れます");
+          if (this.svc.showInFolder && this.platform === "desktop") this.svc.showInFolder(file);
+        }
+        return;
+      }
       case "export": {
         const year = q.year | 0;
         const csv = q.kind === "nenga" ? model.nengaCsv(st.people(), year) : model.csv(st.people());
@@ -520,10 +533,32 @@ class Backend {
   }
 
   async read(p, kind) {
-    const images = [];
-    for (const pg of p.pages) images.push(await this.svc.imaging.toJpeg(await this.store.readMedia(pg.file), 1600));
+    const images = [], codes = [];
+    for (const pg of p.pages) {
+      const bytes = await this.store.readMedia(pg.file);
+      images.push(await this.svc.imaging.toJpeg(bytes, 1600));
+      if (kind === "card" && codes.length < 4) {
+        const t = await this.qrOf(bytes);
+        if (t && !codes.includes(t)) codes.push(t);
+      }
+    }
     const s = this.settings;
-    return gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, kind, images, this.fetch);
+    const r = await gemini.generate({ key: this.secrets.get(), model: s.get("model", "gemini-2.5-flash"), format: s.get("format", "legacy") }, kind, images, this.fetch, "image/jpeg", qr.hint(codes));
+    return kind === "card" ? qr.apply(r, codes) : r;
+  }
+
+  // A QR code on the card: tried at a few sizes (a small code in a big photo, or a blurry one).
+  async qrOf(bytes) {
+    if (!this.svc.imaging.rgba) return "";
+    for (const max of [1600, 1000, 2400]) {
+      try {
+        const t = qr.decode(await this.svc.imaging.rgba(bytes, max));
+        if (t) return t;
+      } catch {
+        return "";
+      }
+    }
+    return "";
   }
 
   async work() {

@@ -115,6 +115,22 @@ function imaging(base) {
       if (s < 1) img = img.resize({ width: Math.round(width * s), height: Math.round(height * s), quality: "best" });
       return img.toJPEG(85);
     },
+    // Pixels for the QR decoder: { data (RGBA), width, height }, scaled to fit max.
+    rgba: async (buf, max) => {
+      let img = nativeImage.createFromBuffer(Buffer.from(buf));
+      if (img.isEmpty()) throw new Error("画像を読み込めません");
+      const { width, height } = img.getSize();
+      const s = Math.min(1, max / Math.max(width, height));
+      if (s < 1) img = img.resize({ width: Math.round(width * s), height: Math.round(height * s), quality: "good" });
+      const { width: w, height: h } = img.getSize();
+      const d = new Uint8ClampedArray(img.toBitmap());
+      for (let i = 0; i < d.length; i += 4) {
+        const b = d[i];
+        d[i] = d[i + 2];
+        d[i + 2] = b;
+      }
+      return { data: d, width: w, height: h };
+    },
     size: async (buf) => {
       const img = nativeImage.createFromBuffer(Buffer.from(buf));
       return img.isEmpty() ? null : img.getSize();

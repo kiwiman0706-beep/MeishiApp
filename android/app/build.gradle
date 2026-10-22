@@ -7,8 +7,8 @@ android {
         applicationId 'jp.yaegaki.meishiclaude'
         minSdk 26
         targetSdk 35
-        versionCode 24
-        versionName '0.17.0'
+        versionCode 25
+        versionName '0.18.0'
     }
     testOptions {
         unitTests.all {
@@ -25,6 +25,8 @@ dependencies {
     implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0'
     implementation 'com.google.android.gms:play-services-auth:21.2.0'
     implementation 'org.snakeyaml:snakeyaml-engine:2.7'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20240303'
     testImplementation 'org.robolectric:robolectric:4.13'

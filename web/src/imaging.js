@@ -77,6 +77,19 @@ const imaging = {
       b.close();
     }
   },
+  // Pixels for the QR decoder: { data (RGBA), width, height }, scaled to fit max.
+  async rgba(bytes, max) {
+    const b = await bitmap(bytes);
+    try {
+      const s = Math.min(1, max / Math.max(b.width, b.height));
+      const c = canvas(b.width * s, b.height * s);
+      const g = c.getContext("2d", { willReadFrequently: true });
+      g.drawImage(b, 0, 0, c.width, c.height);
+      return { data: g.getImageData(0, 0, c.width, c.height).data, width: c.width, height: c.height };
+    } finally {
+      b.close();
+    }
+  },
   async size(bytes) {
     try {
       const b = await bitmap(bytes);

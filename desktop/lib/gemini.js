@@ -39,8 +39,9 @@ async function models(key, fetchImpl) {
   return out;
 }
 
-// images: Buffers of JPEG (already downscaled by the caller), or of `mime`.
-async function generate({ key, model, format }, kind, images, fetchImpl, mime = "image/jpeg") {
+// images: Buffers of JPEG (already downscaled by the caller), or of `mime`; note: more text
+// after the images (what the card's QR code says).
+async function generate({ key, model, format }, kind, images, fetchImpl, mime = "image/jpeg", note = "") {
   if (!images.length) throw new Error("画像を追加してください");
   if (images.length > 20) throw new Error("1件の認識は20ページまでです");
   if (!/^[A-Za-z0-9._-]+$/.test(model)) throw new Error("モデル名が不正です");
@@ -52,6 +53,7 @@ async function generate({ key, model, format }, kind, images, fetchImpl, mime = 
     if (bytes > 12 * 1024 * 1024) throw new Error("画像データが大きすぎます。ページを分けてください");
     parts.push({ inlineData: { mimeType: mime, data: b.toString("base64") } });
   }
+  if (note) parts.push({ text: note });
   const schema = { type: "object", properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])), required: keys };
   const config = { temperature: 0.1 };
   if (format === "modern") config.responseFormat = { text: { mimeType: "application/json", schema } };

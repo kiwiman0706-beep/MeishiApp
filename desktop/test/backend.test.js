@@ -274,3 +274,19 @@ test("handwritten note: PNG saved as a note picture in the vault, Gemini writes 
   assert.notStrictEqual(t.store.person(id).notes[0].ink, n.ink);
   await assert.rejects(t.backend.dispatch("inkNote", { id, png: Buffer.from("not a png").toString("base64") }), /不正/);
 });
+
+test("a QR code on the card: Gemini is told, and its e-mail replaces a misread one", async () => {
+  const t = setup({ ...CARD, name: "山田 太郎", email: "taro-yamada-gn@example.co.jp" });
+  t.setKey("AIza-test");
+  const bodies = [];
+  const plain = t.backend.fetch;
+  t.backend.fetch = async (url, opt) => (bodies.push(String(opt && opt.body)), plain(url, opt));
+  t.backend.svc.imaging.rgba = async () => require("./fixtures/qr-card").card();
+  await t.backend.importFiles([t.file("c.jpg", "JPEGDATA")], {});
+  await t.settle();
+  const p = t.store.people()[0];
+  assert.strictEqual(p.email, "taro-yamada-qn@example.co.jp");
+  assert.strictEqual(p.mobile, "090-1111-2222");
+  assert.match(p.rawText, /\[QRコード\] BEGIN:VCARD/);
+  assert.ok(bodies.some((b) => b.includes("QR1: BEGIN:VCARD")), "the code's text goes to Gemini");
+});

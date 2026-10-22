@@ -1849,3 +1849,64 @@ body.inking {
 .inkfoot label {
   flex: none;
 }
+
+/* ---- Choosing cards ---- */
+.pickstart {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pickstart svg {
+  width: 16px;
+  height: 16px;
+}
+.person.picked,
+tr.picked {
+  background: var(--pale);
+  border-color: var(--green);
+}
+.pickmark {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  background: #fff;
+}
+.person.picked .pickmark {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+.pickmark svg {
+  width: 15px;
+  height: 15px;
+}
+.pickbar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 8px 10px;
+  box-shadow: 0 8px 24px #213d3926;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.pickbar b {
+  flex: 1;
+}
+.pickbar .primary,
+.pickbar .outline {
+  width: auto;
+  padding: 0 14px;
+}

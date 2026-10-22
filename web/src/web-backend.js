@@ -5,6 +5,7 @@ const { Backend } = require("../../desktop/lib/backend");
 const { Google, NeedLogin } = require("./google");
 const { DriveVault } = require("./drive-vault");
 const contacts = require("./contacts");
+const vcard = require("../../desktop/lib/vcard");
 
 const CAPS = ["pick", "scan", "gemini", "map", "export", "nenga", "attach", "contacts", "sync", "google"];
 // Actions that may need a Google sign-in window: it has to open during the tap itself.
@@ -41,6 +42,17 @@ class WebBackend extends Backend {
   }
 
   async handle(action, q = {}) {
+    // The share sheet must also open inside the tap: the file is made without waiting.
+    if (action === "vcard") {
+      try {
+        const people = (q.ids || []).map((x) => this.store.person(String(x)));
+        if (!people.length) throw new Error("名刺を選んでください");
+        await this.svc.shareFile(vcard.fileName(people), vcard.build(people), "text/vcard");
+      } catch (e) {
+        if (e && e.name !== "AbortError") this.event("error", e.message || String(e));
+      }
+      return;
+    }
     // Start the sign-in synchronously, still inside the tap (Safari blocks later pop-ups).
     let signIn = null;
     if (GOOGLE.has(action) || ((action === "save" || action === "delete") && this.linked(q.id))) signIn = this.google.token(true).catch((e) => e);

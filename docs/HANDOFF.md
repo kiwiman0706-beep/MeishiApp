@@ -1,5 +1,12 @@
 # 開発引き継ぎ
 
+## 0.18.0での変更（名刺のQRコード・vCardで共有）
+
+- QRコード：読み取りの前に端末で解読（Android は ML Kit のバーコード読み取り（Play services、マニフェストの `com.google.mlkit.vision.DEPENDENCIES=barcode` で先に取得）、使えなければ ZXing。デスクトップ・Web は jsQR、`imaging.rgba`）。浮き出し・影のある印刷は ZXing では読めないことがあった（実物の名刺で確認）ため ML Kit を先にした。1600/1000/2400px で試す。
+- 解読した文字は Gemini へ「QRコードの内容」として渡し（`Qr.hint` / `qr.hint`）、結果を `Qr.apply` / `qr.apply` で補正：メールは同じもの・3文字以内の違いなら QR の文字に置き換え、無ければ追加。電話は数字が同じものが無ければ種類（携帯・FAX）ごとに追加。URL・氏名・会社などは空欄だけ埋める。全文に `[QRコード] …` を足す（検索できる）。vCard・MECARD・MATMSG・mailto・tel・URL を解釈。
+- vCard：`VCard.java` / `desktop/lib/vcard.js`（同じバイト列、`desktop/test/fixtures/contacts.vcf`）。3.0、CRLF、75バイトで折り返し、読み（`X-PHONETIC-*`）、お店は `X-ABShowAs:COMPANY`。アクション `vcard {ids}`：Android は共有シート（`text/x-vcard`、FilesProvider の `?name=` で受け取る側のファイル名を日本語に）、Web は `navigator.share`（タップの中で開くため `WebBackend.handle` で先に処理）、デスクトップは保存してフォルダを開く。
+- 画面：名刺の「⋯」に「vCardで送る」、一覧の「選択」（`picking`、選択中はタップで選ぶ、「表示中をすべて」、下のバー）。
+
 ## 0.17.0での変更（手書きメモ）
 
 - 共通UIの `inkOpen` / `inkSave`（全画面のパッド、`#inkpad` は `#app` の外なので再描画で消えない）。Pointer Events：ペンは筆圧で太さ（`0.35+1.1×pressure`）、`getCoalescedEvents` で細かく。ペンを一度使うと「指でも書く」がオフになり、指・手のひらは紙をスクロール（`touch-action:none` のまま自前でスクロール）。Sペンのサイドボタン（`buttons&2`）・Windowsペンの消しゴム側（`buttons&32` / `button 5`）で消す。元に戻す・やり直す・下に書き足す。書き足しは保存済みPNGを下地に描く。

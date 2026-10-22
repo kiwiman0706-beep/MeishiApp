@@ -507,6 +507,25 @@ const p = (id, name, company, status = "confirmed") => ({
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "installUpdate" });
   await page.evaluate((d) => onNative({ type: "state", data: d }), demo);
+  // vCard: choose cards on the list (taps pick instead of opening), send them as one file.
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); filter = "all"; query = ""; layout = "cards"; go("home"); }, demo);
+  await page.getByRole("button", { name: /選択/ }).first().click();
+  await page.locator(".person").first().click();
+  assert.equal(await page.evaluate(() => route), "home", "a tap picks while choosing");
+  assert(await page.getByText("1件", { exact: true }).isVisible());
+  await page.screenshot({ path: path.join(screenshotDir, "23-pick.png") });
+  await page.getByRole("button", { name: "表示中をすべて" }).click();
+  await page.getByRole("button", { name: /vCardで送る/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.equal(calls.at(-1).action, "vcard");
+  assert.deepEqual([...calls.at(-1).ids].sort(), ["demo-1", "demo-2"]);
+  await page.getByRole("button", { name: "選択をやめる" }).click();
+  assert.equal(await page.locator(".pickbar").count(), 0);
+  // One card, from its menu.
+  await page.evaluate(() => { openPerson("demo-1"); detailMenu(); });
+  await page.getByRole("button", { name: /vCardで送る/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "vcard", ids: ["demo-1"] });
   // Handwritten note: pen strokes with pressure, fingers scroll once a pen is seen, side button erases.
   await page.evaluate((d) => { onNative({ type: "state", data: d }); openPerson("demo-1"); }, demo);
   await page.getByRole("button", { name: /手書き/ }).first().click();

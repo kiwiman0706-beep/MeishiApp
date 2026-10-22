@@ -51,9 +51,20 @@ function services(store) {
     imaging,
     openFiles,
     openFolder: async () => "",
-    saveFile: async (name, text) => {
+    // The phone's share sheet (LINE, Gmail, Files…) where there is one, else a download.
+    shareFile: (name, text, type) => {
+      const file = new File([text], name, { type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file] });
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+      a.href = URL.createObjectURL(file);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      return Promise.resolve();
+    },
+    saveFile: async (name, text, type = "text/csv") => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: type + ";charset=utf-8" }));
       a.download = name;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 60000);

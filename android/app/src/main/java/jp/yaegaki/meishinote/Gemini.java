@@ -198,8 +198,17 @@ public final class Gemini {
     return generate(new JSONObject().put("pages", new JSONArray().put(pages.get(0))), LOGO_PROMPT, LOGO_KEYS);
   }
 
+  // A QR code on the card is read on the phone first: Gemini is told what it says, and its exact
+  // e-mail / phone / URL win over the photo of the print (Qr).
   public JSONObject recognize(JSONObject person) throws Exception {
-    return generate(person, CARD_PROMPT, CARD_KEYS);
+    List<String> codes = new ArrayList<>();
+    JSONArray pages = person.optJSONArray("pages");
+    Store s = Store.get(c);
+    for (int i = 0; pages != null && i < pages.length() && codes.size() < 4; i++) {
+      String t = Qr.of(s.mediaFile(pages.getJSONObject(i).getString("file")));
+      if (!t.isEmpty() && !codes.contains(t)) codes.add(t);
+    }
+    return Qr.apply(generate(person, CARD_PROMPT, CARD_KEYS, Qr.hint(codes)), codes);
   }
 
   public JSONObject recognizeNenga(JSONObject person) throws Exception {
@@ -207,6 +216,11 @@ public final class Gemini {
   }
 
   JSONObject generate(JSONObject person, String prompt, String[] keys) throws Exception {
+    return generate(person, prompt, keys, "");
+  }
+
+  // note: more text after the images (what the card's QR code says).
+  JSONObject generate(JSONObject person, String prompt, String[] keys, String note) throws Exception {
     JSONArray pages = person.getJSONArray("pages");
     if (pages.length() == 0) throw new IOException("画像を追加してください");
     if (pages.length() > 20) throw new IOException("1件の認識は20ページまでです。複数人のPDFはページ別または表裏2枚で取り込んでください");
@@ -230,6 +244,7 @@ public final class Gemini {
                       .put("mimeType", "image/jpeg")
                       .put("data", Base64.encodeToString(image, Base64.NO_WRAP))));
     }
+    if (!note.isEmpty()) parts.put(new JSONObject().put("text", note));
     return ask(parts, keys);
   }
 

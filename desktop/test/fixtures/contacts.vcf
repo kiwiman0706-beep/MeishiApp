@@ -1,0 +1,26 @@
+BEGIN:VCARD
+VERSION:3.0
+N:山田;太郎;;;
+FN:山田 太郎
+X-PHONETIC-LAST-NAME:やまだ
+X-PHONETIC-FIRST-NAME:たろう
+ORG:サンプル商事株式会社;営業本部 大阪支店
+TEL;TYPE=WORK,VOICE:(06)0000-1111
+TEL;TYPE=CELL:090-0000-2222
+TEL;TYPE=WORK,FAX:(06)0000-3333
+EMAIL;TYPE=INTERNET,WORK:taro-yamada-qn@example.co.jp
+ADR;TYPE=WORK:;;大阪市中央区本町1-2-3;;;541-0000;
+NOTE:名刺交換：2026-10-01 大阪\, 本町
+CATEGORIES:取引先,展示会
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+N:炭火焼 さくら;;;;
+FN:炭火焼 さくら
+ORG:炭火焼 さくら
+X-ABShowAs:COMPANY
+TEL;TYPE=WORK,VOICE:06-0000-0000
+URL:https://example.jp/sakura
+NOTE:ジャンル：焼き鳥\n営業時間：17:00-23:00\n定休日：月
+ 曜
+END:VCARD

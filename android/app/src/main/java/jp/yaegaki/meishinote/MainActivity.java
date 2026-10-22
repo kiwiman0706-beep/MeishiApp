@@ -1607,6 +1607,28 @@ public class MainActivity extends Activity {
       case "openUrl":
         external(q.getString("url"));
         break;
+      case "vcard":
+        {
+          // One or many cards as a vCard file, to LINE, Gmail, the contacts app...
+          JSONArray ids = q.getJSONArray("ids");
+          List<JSONObject> people = new ArrayList<>();
+          for (int i = 0; i < ids.length(); i++) people.add(store.person(ids.getString(i)));
+          if (people.isEmpty()) throw new IOException("名刺を選んでください");
+          File f = new File(getCacheDir(), "contacts.vcf");
+          try (Writer w = new OutputStreamWriter(new FileOutputStream(f), java.nio.charset.StandardCharsets.UTF_8)) {
+            w.write(VCard.build(people));
+          }
+          Uri u = FilesProvider.uri(this, f).buildUpon().appendQueryParameter("name", VCard.fileName(people)).build();
+          Intent i =
+              new Intent(Intent.ACTION_SEND)
+                  .setType("text/x-vcard")
+                  .putExtra(Intent.EXTRA_STREAM, u)
+                  .putExtra(Intent.EXTRA_SUBJECT, people.size() == 1 ? (people.get(0).optString("name").isEmpty() ? people.get(0).optString("company") : people.get(0).optString("name")) + " の連絡先" : "連絡先 " + people.size() + "件")
+                  .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+          i.setClipData(ClipData.newRawUri("vcard", u));
+          startActivity(Intent.createChooser(i, "vCardを送る（LINE・Gmail など）"));
+          break;
+        }
       case "shareImage":
         {
           JSONObject p = store.person(id);

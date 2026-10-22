@@ -1,6 +1,6 @@
 {
   "name": "theta-meishi-hatch-web",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "description": "Theta Meishi Hatch for the browser (PWA, iPhone): the shared UI and the desktop backend over IndexedDB and Google APIs.",
   "license": "UNLICENSED",
@@ -16,5 +16,8 @@
     "js-sha256": "0.11.0",
     "pdfjs-dist": "4.10.38",
     "yaml": "2.6.1"
+  },
+  "dependencies": {
+    "jsqr": "1.4.0"
   }
 }

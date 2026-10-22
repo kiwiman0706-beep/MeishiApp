@@ -81,6 +81,7 @@ const fields = [
   ["hours", "営業時間"],
   ["holidays", "定休日"],
 ];
+let picking = null; // the cards chosen on the list (a Set), or null when not choosing
 let state = { people: [], model: "gemini-2.5-flash", format: "legacy" },
   route = "home",
   selected = "",
@@ -149,6 +150,7 @@ function go(r) {
   )
     return;
   draft = null;
+  picking = null;
   noteDraft = "";
   editNoteId = "";
   settingsDraft = null;
@@ -159,6 +161,7 @@ function go(r) {
   window.scrollTo(0, 0);
 }
 function openPerson(id) {
+  if (picking && route === "home") return pickToggle(id);
   dupOrigin = dupReturn = false;
   selected = id;
   draft = null;
@@ -246,12 +249,12 @@ function listContent() {
   if (layout === "calendar") return calendarView(a);
   if (layout === "map") return mapView(a);
   if (layout === "table")
-    return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" onclick="openPerson('${p.id}')"><td>${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
+    return `<div class="tablewrap"><table><thead><tr><th>氏名</th><th>会社・組織</th><th>部署・肩書き</th><th>電話</th><th>メール</th><th>状態</th></tr></thead><tbody>${a.map((p) => `<tr tabindex="0" role="button" class="${picking?.has(p.id) ? "picked" : ""}" onclick="openPerson('${p.id}')"><td>${picking ? (picking.has(p.id) ? "☑ " : "☐ ") : ""}${esc(title(p))}</td><td>${esc(company(p))}</td><td>${esc([p.department, p.title].filter(Boolean).join(" / "))}</td><td>${esc(p.mobile || p.phone)}</td><td>${esc(p.email)}</td><td>${status(p)}</td></tr>`).join("")}</tbody></table></div><p class="caption">表は横にスクロールできます。CSVはメニューから書き出せます。</p>`;
   if (layout === "company") return companyView(a);
   return personCards(a);
 }
 function personCards(a) {
-  return `<div class="cardlist">${a.map((p) => `<button class="person" onclick="openPerson('${p.id}')">${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
+  return `<div class="cardlist">${a.map((p) => `<button class="person ${picking?.has(p.id) ? "picked" : ""}" onclick="openPerson('${p.id}')">${picking ? `<span class="pickmark">${picking.has(p.id) ? icon("check") : ""}</span>` : ""}${p.pages?.length ? `<img loading="lazy" class="thumb" src="${img(p.pages[0].file)}" alt="名刺">` : `<div class="initial">${esc(title(p).slice(0, 1))}</div>`}<div class="personbody"><h3 class="ell">${esc(title(p))}</h3><div class="company ell">${esc(company(p))}</div><div class="personmeta">${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.queue ? `<span class="badge new">処理中</span>` : p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}${p.notes?.length ? `<span>メモ ${p.notes.length}</span>` : ""}${p.audio?.length ? `<span>録音 ${p.audio.length}</span>` : ""}</div></div><span class="chevron">${icon("next")}</span></button>`).join("")}</div>`;
 }
 // ---- Companies ---------------------------------------------------------------------------
 // Same company however the card spells it (Company.java has the same rule).
@@ -390,7 +393,7 @@ function home() {
       ([v, l, ic]) =>
         `<button role="tab" aria-selected="${layout === v}" class="${layout === v ? "active" : ""}" onclick="setLayout('${v}')">${icon(ic)}${l}</button>`,
     )
-    .join("")}</div>` : ""}${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small><select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
+    .join("")}</div>` : ""}${state.people.length ? `<div class="chips">${chips}</div><div class="sectionline"><small id="count">${filtered().length} 件</small>${picking ? "" : `<button class="link pickstart" onclick="pickStart()">${icon("check")}選択</button>`}<select aria-label="並べ替え" onchange="sort=this.value;updateList()">${[
     ["newest", "追加日が新しい順"],
     ["updated", "更新日が新しい順"],
     ["name", "氏名順"],
@@ -400,7 +403,37 @@ function home() {
       ([v, l]) =>
         `<option value="${v}" ${sort === v ? "selected" : ""}>${l}</option>`,
     )
-    .join("")}</select></div>` : ""}<div id="results">${listContent()}</div>`;
+    .join("")}</select></div>` : ""}<div id="results">${listContent()}</div>${picking ? `<div class="pickbar"><button class="iconbtn" onclick="pickEnd()" aria-label="選択をやめる">${icon("close")}</button><b id="pickcount">${picking.size}件</b><button class="outline noflex" onclick="pickAll()">表示中をすべて</button><button class="primary noflex" ${picking.size ? "" : "disabled"} id="pickshare" onclick="pickShare()">${icon("share")}${state.platform === "desktop" ? "vCard" : "vCardで送る"}</button></div>` : ""}`;
+}
+// ---- Choosing cards (to send several as one vCard file) -----------------------------------
+function pickStart() {
+  picking = new Set();
+  render();
+}
+function pickEnd() {
+  picking = null;
+  render();
+}
+function pickToggle(id) {
+  picking.has(id) ? picking.delete(id) : picking.add(id);
+  pickRefresh();
+}
+function pickAll() {
+  const shown = companyOpen && layout === "company" ? (companyList.find((g) => g.key === companyOpen)?.people || []) : filtered();
+  const all = shown.every((p) => picking.has(p.id));
+  for (const p of shown) all ? picking.delete(p.id) : picking.add(p.id);
+  pickRefresh();
+}
+function pickRefresh() {
+  const y = window.scrollY;
+  updateList();
+  if ($("pickcount")) $("pickcount").textContent = picking.size + "件";
+  if ($("pickshare")) $("pickshare").disabled = !picking.size;
+  window.scrollTo(0, y);
+}
+function pickShare() {
+  if (!picking.size) return;
+  call("vcard", { ids: [...picking] });
 }
 function updateList() {
   $("results").innerHTML = listContent();
@@ -650,6 +683,7 @@ function detailMenu() {
       p.pages.length ? menuRow("spark", "Geminiで読み取り直す", "結果は保存前に確認できます", "closeModal();reread()") : "",
       p.status === "confirmed" && !p.contactRawId && can("contacts") ? menuRow("user", "写真を選んで連絡先に登録", "名刺・人物写真・ロゴから選択", "contactSheet()") : "",
       menuRow("download", "書類・手紙を添付", "契約書・案内状・手紙などを撮影・PDFで", "attachSheet()"),
+      menuRow("share", state.platform === "desktop" ? "vCardで書き出す" : "vCardで送る（LINE・Gmail など）", "連絡先のファイル（.vcf）。受け取った人は連絡先に追加できます", "closeModal();call('vcard',{ids:[selected]})"),
       menuRow("user", "人物写真・会社ロゴ", p.portrait || p.logo ? "登録済み" : "画像検索して登録", "assetSheet()"),
       can("gemini") ? menuRow("spark", "会社ロゴを探す", "名刺から切り出し、無ければ会社のサイトから。同じ会社でロゴの無い人にも使います", "closeModal();call('logoOne',{id:selected})") : "",
       state.people.length > 1 ? menuRow("link", "別の名刺と統合", "同じ人の名刺をまとめる", "mergeSheet()") : "",
@@ -1652,6 +1686,7 @@ function restoreConfirm() {
 // ---- Native bridge ------------------------------------------------------------
 window.handleBack = () => {
   if (ink) return inkClose();
+  if (picking && !modalOpen) return pickEnd();
   if (!$("busy").hidden) {
     toast("処理が終わるまでお待ちください");
     return;
