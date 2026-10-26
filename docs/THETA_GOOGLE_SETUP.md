@@ -49,16 +49,19 @@ Google Cloud の設定は **シリーズで1つのプロジェクト** にまと
 | 取り方 | パッケージ名 | SHA-1 |
 | --- | --- | --- |
 | **アプリの画面**（いちばん確実） | 初期設定ガイドに表示（コピーボタン付き） | 同じく表示。インストールされているアプリの署名から読むので間違いがない |
-| GitHub のリポジトリ | `android/app/build.gradle` の `applicationId` | ファイルには無い（署名鍵は Secret なので見えない）。シリーズ共通の鍵なら下の値 |
+| GitHub のリポジトリ | `android/app/build.gradle` の `applicationId` | ファイルには無い（署名鍵は Secret なので見えない） |
 | Claude に聞く | `applicationId` を答えられる | APK か署名鍵があれば `apksigner` / `keytool` で出せる |
 
-- シリーズは **署名鍵が共通**（Meishi と同じ `meishiclaude-release.jks`）なので、**SHA-1 は全アプリ同じ** です：
+- **コンソールに入れる SHA-1 は、そのアプリの初期設定ガイドに出る値を使ってください**（インストールされているアプリ自身の署名から読むので確実です）。
+- Meishi の署名鍵（`meishiclaude-release.jks`）の SHA-1 は次のとおりです（鍵とリリース版の APK で確認済み）：
 
   ```
   A1:13:EA:34:83:60:56:32:E7:F5:94:4E:4E:8C:20:55:DD:AE:28:BA
   ```
 
-  違うのはパッケージ名だけです（新しいアプリは `jp.yaegaki.theta.<名前>`。Meishi だけは歴史的事情で `jp.yaegaki.meishiclaude`）。
+  他のアプリもこの鍵で署名すれば同じ値になります。ただし、**そのアプリの開発スレッドで別の鍵を作っていたり、デバッグ版だったりすると違う値になります**。その場合は、ガイドに出る値で登録すれば動きます。
+  シリーズで揃える場合は、新しいアプリのビルドにも Meishi の鍵を渡してください（APIキーの貸し借り（`SeriesProvider`）は、同じ鍵で署名したアプリ同士でしか動きません）。
+- パッケージ名は新しいアプリなら `jp.yaegaki.theta.<名前>` です（Meishi だけは歴史的事情で `jp.yaegaki.meishiclaude`）。
 - Android Studio から直接入れた**デバッグ版**は、パソコンのデバッグ用の鍵で署名されるため SHA-1 が違います。デバッグ版で Google ログインを試すときだけ、そのSHA-1でもう1つクライアントを作ります（GitHub のリリース版だけ使うなら不要）。
 
 ### 2. Android用OAuthクライアントを作る
