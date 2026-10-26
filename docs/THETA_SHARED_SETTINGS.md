@@ -86,6 +86,8 @@ Theta Hatch の設定を引き継ぎますか？         （Meishi Hatch で設�
 
 ## 5. Google Cloud は1つのプロジェクトで
 
+手順の全体（共通の設定と、アプリごとの設定の分け方）は `THETA_GOOGLE_SETUP.md`。
+
 - シリーズで1つのプロジェクト（`google.cloudProject` に名前を記録）。APIの有効化（Drive・People・Calendar）、同意画面、テストユーザーは**最初のアプリで1回だけ**。
 - 2つ目以降のアプリで要るのは、**Android用OAuthクライアントの追加だけ**（パッケージ名が違うため。SHA-1は共通鍵なら同じ）。
 - Web版は同じオリジンなら**同じWebクライアントID**をそのまま使える（`google.webClientId` を引き継ぐ）。

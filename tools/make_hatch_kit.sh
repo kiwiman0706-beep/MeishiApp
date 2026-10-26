@@ -12,7 +12,7 @@ mkdir -p "$K"/{spec,guides,reference/android/java,reference/android/res,referenc
 
 cp tools/hatch-kit/{README.md,PROMPT.md,LESSONS.md,REFERENCE.md} "$K/"
 cp docs/THETA_HATCH_SPEC.md docs/THETA_VAULT_SPEC.md docs/THETA_SHARED_SETTINGS.md "$K/spec/"
-cp docs/DRIVE_SETUP.md docs/WEB_SETUP.md docs/RELEASING.md "$K/guides/"
+cp docs/THETA_GOOGLE_SETUP.md docs/DRIVE_SETUP.md docs/WEB_SETUP.md docs/RELEASING.md "$K/guides/"
 
 A=android/app/src/main
 cp android/app/build.gradle android/build.sh "$A/AndroidManifest.xml" "$K/reference/android/"

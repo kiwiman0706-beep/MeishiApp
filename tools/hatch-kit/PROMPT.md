@@ -22,7 +22,7 @@ Theta ○○ Hatch シリーズの新しいアプリ **「Theta 【名前（英�
 - 共通仕様に従う：データの正本は Theta Vault（Googleドライブの `Theta Vault/【英字のフォルダ名】/` に 1件 = 1つの Markdown、添付は `_files/`）。Obsidian で開けて、Obsidian での編集や手書きのノートも取り込めること。Vault の `.theta/` は Meishi と共有（`vault.json` の `apps` に自分を足す、`settings.json` は消さずに項目単位で更新）。
 - 画面は1つ（HTML/CSS/JS）を Android・Windows/Mac・Web で共有し、`platform`/`caps` で出し分け。日本語の画面。ボタンの羅列にせず、よく使う操作が少ない手数で済むように。
 - **設定の引き継ぎ（`THETA_SHARED_SETTINGS.md`）を最初から入れる**：初回に `.theta/settings.json` があれば、項目ごとにチェックして引き継ぐ画面。Gemini のモデル・Google アカウント・カレンダー登録先などはシリーズ共通にでき、アプリだけの値にもできる。APIキーは同じ端末の Meishi からだけ（利用者の承認つき）。Meishi 0.16.0 の実装（`SeriesSettings.java`・`desktop/lib/series.js`・`Series.java`・`SeriesProvider.java`、画面の `seriesOfferSheet`/`seriesSheet`）をそのまま流用し、`ME` をこのアプリの名前に、`USES` をこのアプリが使える項目にする。新しい項目を足すときは `LABELS` に足して、Meishi 側にも同じ変更を入れる。
-- Google は **Meishi と同じ Google Cloud プロジェクト**を使う（2つ目以降は Android クライアントの追加だけ）。アプリ内に「Google 連携の初期設定ガイド」（Meishi の `setupGuide` と同じ形、済んだ手順は畳む）。
+- Google は **Meishi と同じ Google Cloud プロジェクト**を使う（2つ目以降は Android クライアントの追加だけ。共通と個別の分け方は `guides/THETA_GOOGLE_SETUP.md`）。アプリ内に「Google 連携の初期設定ガイド」（Meishi の `setupGuide` と同じ形、済んだ手順は畳む）。
 - 秘密（署名鍵・パスワード・APIキー）はコミットしない。Android の署名鍵は **Meishi と同じ鍵**を使う（私が渡します。CI には Secret で）。
 - applicationId は `jp.yaegaki.theta.【名前】`、版番号は Android・デスクトップ・Web で同じ。
 - リリースは GitHub Actions（`reference/workflows/`）で、Android の自動更新（アプリ内インストール）・Windows の自動更新・Web 版の自動入れ替えを最初から。
