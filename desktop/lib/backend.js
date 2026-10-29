@@ -275,6 +275,11 @@ class Backend {
       case "models":
         this.needKey();
         return this.event("models", await gemini.models(this.secrets.get(), this.fetch));
+      case "copyText":
+        // The page writes the clipboard itself; this is the fallback when it cannot.
+        if (!this.svc.copyText) return this.toast("コピーできませんでした");
+        this.svc.copyText(String(q.text || ""));
+        return this.toast("コピーしました");
       case "vcard": {
         // One or many cards as a vCard file (attach it in Gmail, send it in LINE...).
         const people = (q.ids || []).map((x) => st.person(String(x)));

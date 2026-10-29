@@ -253,6 +253,7 @@ app.whenReady().then(async () => {
       fs.writeFileSync(r.filePath, text);
       return r.filePath;
     },
+    copyText: (t) => clipboard.writeText(t),
     openExternal: (u) => shell.openExternal(u),
     openPath: (f) => shell.openPath(f),
     showInFolder: (f) => shell.showItemInFolder(f),

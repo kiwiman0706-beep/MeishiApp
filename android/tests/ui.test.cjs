@@ -526,6 +526,28 @@ const p = (id, name, company, status = "confirmed") => ({
   await page.getByRole("button", { name: /vCardで送る/ }).click();
   calls = await page.evaluate(() => window.calls);
   assert.deepEqual(calls.at(-1), { action: "vcard", ids: ["demo-1"] });
+  // Copy as text: checkboxes appear by each field, only the ticked ones are copied.
+  await page.evaluate((d) => { onNative({ type: "state", data: d }); openPerson("demo-1"); }, demo);
+  await page.getByRole("button", { name: /^コピー$/ }).first().click();
+  const copyRows = page.locator(".copyrow2");
+  assert((await copyRows.count()) >= 5, "a checkbox for every field the card has");
+  const mail = await page.evaluate(() => getPerson().email);
+  await page.getByRole("button", { name: "すべて外す" }).click();
+  await page.locator(".copyrow2", { hasText: "氏名" }).locator("input").check();
+  await page.locator(".copyrow2", { hasText: "メール" }).locator("input").check();
+  assert.equal(await page.locator("#copypreview").textContent(), "氏名：山田 太郎（サンプル）\nメール：" + mail);
+  await page.locator("#copylabels").uncheck();
+  assert.equal(await page.locator("#copypreview").textContent(), "山田 太郎（サンプル）\n" + mail);
+  await page.screenshot({ path: path.join(screenshotDir, "24-copy.png"), fullPage: true });
+  await page.getByRole("button", { name: /クリップボードにコピー/ }).click();
+  calls = await page.evaluate(() => window.calls);
+  assert.deepEqual(calls.at(-1), { action: "copyText", text: "山田 太郎（サンプル）\n" + mail });
+  assert.equal(await page.locator(".copyrow2").count(), 0, "back to the card after copying");
+  // Next time the same fields start ticked.
+  await page.getByRole("button", { name: /^コピー$/ }).first().click();
+  assert.equal(await page.locator(".copyrow2 input:checked").count(), 2);
+  await page.getByRole("button", { name: "キャンセル" }).click();
+  await page.evaluate(() => go("home"));
   // Handwritten note: pen strokes with pressure, fingers scroll once a pen is seen, side button erases.
   await page.evaluate((d) => { onNative({ type: "state", data: d }); openPerson("demo-1"); }, demo);
   await page.getByRole("button", { name: /手書き/ }).first().click();

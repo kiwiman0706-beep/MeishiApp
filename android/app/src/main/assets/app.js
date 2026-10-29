@@ -30,6 +30,7 @@ const paths = {
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18 M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5 M12 16.8v.2",
   down: "M5 9l7 7 7-7",
   edit: "M4 16l12-12 4 4L8 20H4z M13 7l4 4",
+  copy: "M9 9h11v11H9z M5 15H4V4h11v1",
   pen: "M3 21c3-1 5-1 7-3l10-10a2.1 2.1 0 0 0-3-3L7 15c-2 2-2 4-4 6 M14 6l3 3",
   eraser: "M8 20h12 M5 15l9-9 5 5-8 8H8z M10 10l5 5",
   undo: "M9 14L4 9l5-5 M4 9h11a5 5 0 0 1 0 10h-3",
@@ -81,6 +82,7 @@ const fields = [
   ["hours", "営業時間"],
   ["holidays", "定休日"],
 ];
+let copyPick = null; // while choosing what to copy from a card: the chosen field keys (a Set)
 let picking = null; // the cards chosen on the list (a Set), or null when not choosing
 let state = { people: [], model: "gemini-2.5-flash", format: "legacy" },
   route = "home",
@@ -151,6 +153,7 @@ function go(r) {
     return;
   draft = null;
   picking = null;
+  copyPick = null;
   noteDraft = "";
   editNoteId = "";
   settingsDraft = null;
@@ -162,6 +165,7 @@ function go(r) {
 }
 function openPerson(id) {
   if (picking && route === "home") return pickToggle(id);
+  copyPick = null;
   dupOrigin = dupReturn = false;
   selected = id;
   draft = null;
@@ -614,6 +618,75 @@ function infoRow(k, l, v) {
     })
     .join("")}</span></div>`;
 }
+// ---- Copying a card's details as text: tick the fields, then copy ---------------------------
+function copyFields(p) {
+  return fields.filter(([k]) => String(p[k] || "").trim());
+}
+function copyPref(k, d) {
+  try {
+    const v = localStorage.getItem("copy." + k);
+    return v === null ? d : JSON.parse(v);
+  } catch {
+    return d;
+  }
+}
+function copyStart() {
+  const have = copyFields(getPerson()).map(([k]) => k);
+  // The fields ticked last time, else everything on this card.
+  const last = copyPref("keys", null);
+  const keep = last ? have.filter((k) => last.includes(k)) : [];
+  copyPick = new Set(keep.length ? keep : have);
+  render();
+}
+function copyEnd() {
+  copyPick = null;
+  render();
+}
+function copyPanel(p) {
+  const rows = copyFields(p);
+  const labels = copyPref("labels", true);
+  return `<div class="copylist">${rows
+    .map(
+      ([k, l]) =>
+        `<label class="copyrow2"><input type="checkbox" ${copyPick.has(k) ? "checked" : ""} onchange="this.checked?copyPick.add('${k}'):copyPick.delete('${k}');copyPreview()"><span class="k">${l}</span><span class="v">${esc(p[k]).replace(/\n/g, "<br>")}</span></label>`,
+    )
+    .join("")}</div><div class="row gap copyopts"><button class="link" onclick="copyAll()">${rows.every(([k]) => copyPick.has(k)) ? "すべて外す" : "すべて選ぶ"}</button><label><input type="checkbox" id="copylabels" ${labels ? "checked" : ""} onchange="copyPreview()"> 項目名を付ける</label></div><pre class="copypreview" id="copypreview">${esc(copyBuild(p, labels))}</pre><div class="row gap copybtns"><button class="primary" id="copydo" onclick="copyDo()">${icon("copy")}クリップボードにコピー</button><button class="noflex" onclick="copyEnd()">キャンセル</button></div>`;
+}
+// The chosen fields as text, in the card's order: "会社・組織：…" lines, or only the values.
+function copyBuild(p, labels) {
+  return copyFields(p)
+    .filter(([k]) => copyPick.has(k))
+    .map(([k, l]) => {
+      const lines = String(p[k]).split("\n").map((x) => x.trim()).filter(Boolean);
+      if (labels) return `${l}：${lines.join("、")}`;
+      return (k === "postal" ? "〒" : "") + lines.join("\n");
+    })
+    .join("\n");
+}
+function copyPreview() {
+  const labels = !!$("copylabels")?.checked;
+  try {
+    localStorage.setItem("copy.labels", JSON.stringify(labels));
+  } catch {}
+  const t = copyBuild(getPerson(), labels);
+  if ($("copypreview")) $("copypreview").textContent = t;
+  if ($("copydo")) $("copydo").disabled = !t;
+}
+function copyAll() {
+  const keys = copyFields(getPerson()).map(([k]) => k);
+  const all = keys.every((k) => copyPick.has(k));
+  copyPick = new Set(all ? [] : keys);
+  render();
+}
+function copyDo() {
+  const text = copyBuild(getPerson(), !!$("copylabels")?.checked);
+  if (!text) return;
+  try {
+    localStorage.setItem("copy.keys", JSON.stringify([...copyPick]));
+  } catch {}
+  copyText(text);
+  copyEnd();
+}
 function openLink(i) {
   call("openUrl", { url: links[i] });
 }
@@ -649,7 +722,7 @@ function detail() {
     p.pages.length
       ? `<div class="pages">${p.pages.map((pg, i) => `<button class="page" onclick="viewImage(${i})"><img class="pageimg" src="${img(pg.file)}" alt="名刺 ${label(i)}"><span class="pageLabel">${label(i)}</span></button>`).join("")}</div>`
       : ""
-  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。${contactDupButtons(p.id)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3>${p.kind === "shop" ? "お店の情報" : "連絡先情報"}</h3><div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div></section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? "" : `<button class="outline noflex" onclick="inkOpen()" aria-label="手書きメモ">${icon("pen")}手書き</button>`}${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
+  }<div class="detailsHead">${p.portrait ? `<img class="avatar" src="${img(p.portrait)}" alt="人物写真">` : p.logo ? `<img class="avatar logo" src="${img(p.logo)}" alt="会社ロゴ">` : `<div class="avatar">${esc(title(p).slice(0, 1))}</div>`}<div class="content"><small>${esc(p.kana)}</small><h1>${esc(title(p))}</h1><p class="muted">${esc(company(p))}${p.title ? " ・ " + esc(p.title) : ""}</p>${p.kind === "shop" ? `<span class="badge shop">お店</span>` : ""}${p.status === "confirmed" ? "" : `<span class="badge ${esc(p.status)}">${status(p)}</span>`}${p.contactRawId ? `<span class="badge confirmed">連絡先登録済み</span>` : ""}</div></div><div class="gap">${primaryAction(p)}</div>${p.warnings ? `<div class="tip warning gap">読み取り時の注意：${esc(p.warnings)}</div>` : ""}${p.queueError ? `<div class="tip warning gap">処理できませんでした：${esc(p.queueError)}</div>` : ""}${p.contactDuplicate ? `<div class="tip warning gap">Google連絡先に「${esc(p.contactDuplicate)}」が既にあります（同じ電話・メール）。${contactDupButtons(p.id)}</div>` : ""}<div class="detailcols"><div><section class="panel"><h3 class="panelhead">${p.kind === "shop" ? "お店の情報" : "連絡先情報"}${copyPick || !info.length ? "" : `<button class="link copystart" onclick="copyStart()">${icon("copy")}コピー</button>`}</h3>${copyPick ? copyPanel(p) : `<div class="infogrid">${info.map(([k, l]) => infoRow(k, l, p[k])).join("") || '<p class="caption">まだ情報がありません。読み取るか、右上の編集から入力してください。</p>'}</div>`}</section>${nengaHtml}</div><div><section class="panel"><h3>やり取りのメモ <small>${p.notes.length}件</small></h3><textarea id="note" placeholder="お会いした場所、相談内容、次回の約束など" oninput="noteDraft=this.value">${esc(noteDraft)}</textarea><div class="row gap"><button class="secondary" onclick="addNote()">${icon("plus")}${editNoteId ? "変更を保存" : "メモを追加"}</button>${editNoteId ? "" : `<button class="outline noflex" onclick="inkOpen()" aria-label="手書きメモ">${icon("pen")}手書き</button>`}${editNoteId ? `<button class="noflex" onclick="noteDraft='';editNoteId='';render()">キャンセル</button>` : ""}${can("record") ? `<button class="${state.recording ? "danger" : "outline"} noflex" onclick="${state.recording ? "call('stopRecord')" : "call('record',{id:selected})"}" aria-label="${state.recording ? "録音を停止" : "録音を開始"}">${icon(state.recording ? "stop" : "mic")}${state.recording ? "停止" : "録音"}</button>` : ""}</div>${timeline(p)}</section></div></div><p class="footnote">録音は相手の了承を得て行ってください。端末に保存され、Geminiへは送信しません。</p>`;
 }
 // Notes and recordings share one timeline so the page has a single "history" section.
 function timeline(p) {
@@ -1307,7 +1380,7 @@ const setupDone = new Set();
 let setupNext = "";
 function copyText(text) {
   const native = () => call("copyText", { text });
-  if (navigator.clipboard && window.isSecureContext && state.platform === "web")
+  if (navigator.clipboard && window.isSecureContext && state.platform !== "android" && state.platform)
     navigator.clipboard.writeText(text).then(() => toast("コピーしました"), native);
   else native();
 }
@@ -1687,6 +1760,7 @@ function restoreConfirm() {
 window.handleBack = () => {
   if (ink) return inkClose();
   if (picking && !modalOpen) return pickEnd();
+  if (copyPick && !modalOpen) return copyEnd();
   if (!$("busy").hidden) {
     toast("処理が終わるまでお待ちください");
     return;
